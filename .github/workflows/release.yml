@@ -27,12 +27,12 @@ jobs:
           cp -R build/GreenComputing.app package/GreenComputing-macos/
           cp build/GreenComputingCLI package/GreenComputing-macos/
           cp README.md README.zh-CN.md LICENSE demo.cpp img1.png package/GreenComputing-macos/
-          tar -czf GreenComputing-macos.tar.gz -C package GreenComputing-macos
+          hdiutil create -volname GreenComputing -srcfolder package/GreenComputing-macos -ov -format UDZO GreenComputing-macos.dmg
 
       - uses: actions/upload-artifact@v4
         with:
           name: GreenComputing-macos
-          path: GreenComputing-macos.tar.gz
+          path: GreenComputing-macos.dmg
 
   build-linux:
     name: Build Linux
@@ -40,16 +40,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Qt
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev qt6-base-dev-tools libgl1 libxcb-cursor0
+
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build --config Release --target GreenComputingCLI
+        run: cmake --build build --config Release --target GreenComputing GreenComputingCLI
 
       - name: Package
         run: |
           mkdir -p package/GreenComputing-linux
+          mkdir -p package/GreenComputing-linux/lib package/GreenComputing-linux/platforms
+          cp build/GreenComputing package/GreenComputing-linux/
           cp build/GreenComputingCLI package/GreenComputing-linux/
+          ldd build/GreenComputing | awk '/=> \// {print $3}' | xargs -I{} cp -n {} package/GreenComputing-linux/lib/ || true
+          cp -R /usr/lib/x86_64-linux-gnu/qt6/plugins/platforms/* package/GreenComputing-linux/platforms/
+          cat > package/GreenComputing-linux/run-greencomputing.sh <<'EOF'
+          #!/usr/bin/env bash
+          DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          export LD_LIBRARY_PATH="$DIR/lib:${LD_LIBRARY_PATH:-}"
+          export QT_QPA_PLATFORM_PLUGIN_PATH="$DIR/platforms"
+          exec "$DIR/GreenComputing" "$@"
+          EOF
+          chmod +x package/GreenComputing-linux/run-greencomputing.sh
           cp README.md README.zh-CN.md LICENSE demo.cpp img1.png package/GreenComputing-linux/
           tar -czf GreenComputing-linux.tar.gz -C package GreenComputing-linux
 
@@ -64,19 +81,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.7.3"
+          arch: "win64_msvc2019_64"
+
       - name: Configure
         shell: pwsh
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         shell: pwsh
-        run: cmake --build build --config Release --target GreenComputingCLI
+        run: cmake --build build --config Release --target GreenComputing GreenComputingCLI
 
       - name: Package
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path package/GreenComputing-windows | Out-Null
+          Copy-Item build/Release/GreenComputing.exe package/GreenComputing-windows/
           Copy-Item build/Release/GreenComputingCLI.exe package/GreenComputing-windows/
+          windeployqt package/GreenComputing-windows/GreenComputing.exe
           Copy-Item README.md,README.zh-CN.md,LICENSE,demo.cpp,img1.png package/GreenComputing-windows/
           Compress-Archive -Path package/GreenComputing-windows -DestinationPath GreenComputing-windows.zip -Force
 
@@ -101,15 +125,16 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
           cat > release-notes.md <<EOF
           GreenComputing ${TAG}
 
           Packages:
-          - GreenComputing-macos.tar.gz: macOS GUI app and CLI
-          - GreenComputing-linux.tar.gz: Linux CLI
-          - GreenComputing-windows.zip: Windows CLI
+          - GreenComputing-macos.dmg: macOS GUI app and CLI
+          - GreenComputing-linux.tar.gz: Linux GUI app and CLI
+          - GreenComputing-windows.zip: Windows GUI app and CLI
           EOF
 
           if gh release view "$TAG" >/dev/null 2>&1; then

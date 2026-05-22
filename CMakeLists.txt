@@ -20,6 +20,15 @@ if(APPLE)
         $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-Wall -Wextra -Wpedantic>
         $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>
     )
+else()
+    find_package(Qt6 REQUIRED COMPONENTS Widgets)
+    qt_standard_project_setup()
+    add_executable(GreenComputing qt_main.cpp)
+    target_link_libraries(GreenComputing PRIVATE Qt6::Widgets)
+    target_compile_options(GreenComputing PRIVATE
+        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
+        $<$<CXX_COMPILER_ID:MSVC>:/W4>
+    )
 endif()
 
 add_executable(GreenComputingCLI main.cpp)
