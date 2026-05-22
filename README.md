@@ -2,6 +2,8 @@
 
 [中文文档](README.zh-CN.md)
 
+![GreenComputing screenshot](img1.png)
+
 GreenComputing is a C++ static analysis tool for estimating function-level energy usage and carbon emissions. It includes a graphical interface on macOS, Windows, and Linux, plus a command-line interface.
 
 The analyzer reads C++ source files, identifies functions, estimates instruction-category activity, applies a hardware power model, and reports relative carbon hotspots across the program.
