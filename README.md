@@ -1,5 +1,7 @@
 # GreenComputing
 
+[中文文档](README.zh-CN.md)
+
 GreenComputing is a C++ static analysis tool for estimating function-level energy usage and carbon emissions. It includes both a macOS graphical interface and a command-line interface.
 
 The analyzer reads C++ source files, identifies functions, estimates instruction-category activity, applies a hardware power model, and reports relative carbon hotspots across the program.
@@ -34,7 +36,7 @@ cmake --build cmake-build-debug --target GreenComputing GreenComputingCLI
 Graphical interface:
 
 ```bash
-./cmake-build-debug/GreenComputing
+open ./cmake-build-debug/GreenComputing.app
 ```
 
 Command-line interface:
@@ -85,4 +87,4 @@ For precise measurement, use platform counters or profiling tools such as RAPL, 
 
 ## License
 
-No license has been specified yet.
+See [LICENSE](LICENSE).

@@ -104,6 +104,20 @@ static NSTextField* value_label(NSRect frame) {
     return view;
 }
 
+static CGFloat visible_document_width(NSView* view, CGFloat min_width) {
+    NSScrollView* scroll = view.enclosingScrollView;
+    if (scroll)
+        return std::max<CGFloat>(min_width, scroll.contentView.bounds.size.width);
+    return std::max<CGFloat>(min_width, view.bounds.size.width);
+}
+
+static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
+    NSScrollView* scroll = view.enclosingScrollView;
+    if (scroll)
+        return std::max<CGFloat>(min_height, scroll.contentView.bounds.size.height);
+    return std::max<CGFloat>(min_height, view.bounds.size.height);
+}
+
 @interface CarbonChartView : NSView
 @property(nonatomic, assign) ProgramProfile* program;
 @property(nonatomic, assign) NSInteger selectedRow;
@@ -133,8 +147,9 @@ static NSTextField* value_label(NSRect frame) {
     NSInteger count = _program ? (NSInteger)_program->functions.size() : 0;
     if (top_index >= 0)
         --count;
-    CGFloat width = std::max<CGFloat>(820.0, 112.0 + std::max<NSInteger>(count - 1, 0) * 92.0);
-    [self setFrameSize:NSMakeSize(width, 272.0)];
+    CGFloat width = std::max<CGFloat>(visible_document_width(self, 640.0),
+                                      112.0 + std::max<NSInteger>(count - 1, 0) * 92.0);
+    [self setFrameSize:NSMakeSize(width, visible_document_height(self, 240.0))];
     [self setNeedsDisplay:YES];
 }
 
@@ -183,7 +198,7 @@ static NSTextField* value_label(NSRect frame) {
         return _program->functions[(size_t)a].name < _program->functions[(size_t)b].name;
     });
 
-    NSRect top_card = NSMakeRect(548, 10, 250, 38);
+    NSRect top_card = NSMakeRect(std::max<CGFloat>(16.0, self.bounds.size.width - 272.0), 10, 250, 38);
     if (top_index >= 0) {
         const auto& top_fp = _program->functions[(size_t)top_index];
         NSColor* top_fill = (_selectedRow == top_index) ? gh_card_subtle() : gh_bg();
@@ -231,9 +246,10 @@ static NSTextField* value_label(NSRect frame) {
 
     const NSInteger count = (NSInteger)plotted.size();
     const CGFloat left = 58.0;
+    const CGFloat right = 30.0;
     const CGFloat top = 52.0;
-    const CGFloat plot_h = 126.0;
-    const CGFloat step = 92.0;
+    const CGFloat plot_h = std::max<CGFloat>(96.0, self.bounds.size.height - top - 94.0);
+    const CGFloat step = count > 1 ? std::max<CGFloat>(56.0, (self.bounds.size.width - left - right) / (count - 1)) : 0.0;
     const CGFloat axis_y = top + plot_h;
 
     if (_selectedRow >= 0) {
@@ -241,7 +257,7 @@ static NSTextField* value_label(NSRect frame) {
         if (it != plotted.end()) {
             CGFloat x = left + (it - plotted.begin()) * step;
             [gh_card_subtle() setFill];
-            NSBezierPath* selected = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(x - 42, 42, 84, 232)
+            NSBezierPath* selected = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(x - 42, 42, 84, self.bounds.size.height - 52.0)
                                                                      xRadius:8
                                                                      yRadius:8];
             [selected fill];
@@ -314,7 +330,7 @@ static NSTextField* value_label(NSRect frame) {
             plotted.push_back(i);
     }
 
-    NSRect top_card = NSMakeRect(548, 10, 250, 38);
+    NSRect top_card = NSMakeRect(std::max<CGFloat>(16.0, self.bounds.size.width - 272.0), 10, 250, 38);
     if (top_index >= 0 && NSPointInRect(p, top_card)) {
         _selectedRow = top_index;
         [self setNeedsDisplay:YES];
@@ -327,7 +343,22 @@ static NSTextField* value_label(NSRect frame) {
     }
 
     const CGFloat left = 58.0;
-    const CGFloat step = 92.0;
+    const CGFloat right = 30.0;
+    const NSInteger count = (NSInteger)plotted.size();
+    if (count == 1) {
+        if (std::fabs(p.x - left) <= 56.0) {
+            _selectedRow = plotted.front();
+            [self setNeedsDisplay:YES];
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+            if (_target && _action && [_target respondsToSelector:_action])
+                [_target performSelector:_action withObject:self];
+#pragma clang diagnostic pop
+        }
+        return;
+    }
+
+    const CGFloat step = std::max<CGFloat>(56.0, (self.bounds.size.width - left - right) / (count - 1));
     NSInteger row = (NSInteger)std::llround((p.x - left) / step);
     if (row >= 0 && row < (NSInteger)plotted.size()) {
         _selectedRow = plotted[(size_t)row];
@@ -367,16 +398,21 @@ static NSTextField* value_label(NSRect frame) {
 }
 
 - (void)reloadData {
+    CGFloat width = visible_document_width(self, 640.0);
     CGFloat height = 250.0;
     if (_program && _selectedRow >= 0 && _selectedRow < (NSInteger)_program->functions.size()) {
         const auto& fp = _program->functions[(size_t)_selectedRow];
-        height = 500.0;
+        const CGFloat content_w = std::max<CGFloat>(320.0, width - 36.0);
+        const CGFloat chip_gap = 14.0;
+        NSInteger chip_cols = std::clamp<NSInteger>((NSInteger)((content_w + chip_gap) / (190.0 + chip_gap)), 2, 4);
+        NSInteger chip_rows = (7 + chip_cols - 1) / chip_cols;
+        height = 258.0 + chip_rows * 84.0 + 40.0;
         if (!fp.callees.empty())
             height += 72.0 + std::min<size_t>(fp.callees.size(), 8) * 46.0;
         if (!fp.warnings.empty() || !fp.suggestions.empty())
             height += 52.0 + std::min<size_t>(fp.warnings.size() + fp.suggestions.size(), 6) * 22.0;
     }
-    [self setFrameSize:NSMakeSize(std::max<CGFloat>(820.0, self.frame.size.width), height)];
+    [self setFrameSize:NSMakeSize(width, height)];
     [self setNeedsDisplay:YES];
 }
 
@@ -432,6 +468,7 @@ static NSTextField* value_label(NSRect frame) {
     }
 
     const auto& fp = _program->functions[(size_t)_selectedRow];
+    const CGFloat content_w = std::max<CGFloat>(320.0, self.bounds.size.width - 36.0);
     [@"函数详情" drawAtPoint:NSMakePoint(18, 16) withAttributes:title_attr];
     [ns(fp.name) drawAtPoint:NSMakePoint(18, 42)
               withAttributes:@{
@@ -441,25 +478,29 @@ static NSTextField* value_label(NSRect frame) {
 
     std::ostringstream location;
     location << fp.file << ":" << fp.line_start << "-" << fp.line_end;
-    [ns(shorten(location.str(), 96)) drawAtPoint:NSMakePoint(18, 70) withAttributes:muted_attr];
+    [ns(shorten(location.str(), (size_t)std::max<CGFloat>(48.0, content_w / 7.0)))
+        drawAtPoint:NSMakePoint(18, 70)
+     withAttributes:muted_attr];
 
+    const CGFloat metric_gap = 16.0;
+    const CGFloat metric_w = (content_w - metric_gap * 3.0) / 4.0;
     [self drawMetric:@"碳排放"
                value:ns(fmt_co2(fp.estimated_co2_mg) + " CO2eq")
-               frame:NSMakeRect(18, 102, 180, 66)
+               frame:NSMakeRect(18, 102, metric_w, 66)
                color:gh_green()];
     [self drawMetric:@"能耗"
                value:ns(fmt_energy(fp.estimated_joules))
-               frame:NSMakeRect(214, 102, 150, 66)
+               frame:NSMakeRect(18 + (metric_w + metric_gap), 102, metric_w, 66)
                color:gh_blue()];
     [self drawMetric:@"能耗评分"
                value:ns(std::to_string((long long)fp.energy_score))
-               frame:NSMakeRect(380, 102, 150, 66)
+               frame:NSMakeRect(18 + (metric_w + metric_gap) * 2.0, 102, metric_w, 66)
                color:gh_text()];
     std::ostringstream loop_text;
     loop_text << "深度 " << fp.loops.depth << " / " << fp.loops.count << " 个";
     [self drawMetric:@"循环"
                value:ns(loop_text.str())
-               frame:NSMakeRect(546, 102, 150, 66)
+               frame:NSMakeRect(18 + (metric_w + metric_gap) * 3.0, 102, metric_w, 66)
                color:fp.loops.depth >= 2 ? gh_orange() : gh_text()];
 
     struct Part {
@@ -489,7 +530,7 @@ static NSTextField* value_label(NSRect frame) {
 
     CGFloat stack_x = 18.0;
     CGFloat stack_y = 226.0;
-    CGFloat stack_w = 678.0;
+    CGFloat stack_w = content_w;
     CGFloat stack_h = 14.0;
     [gh_border() setFill];
     NSBezierPath* stack_track = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(stack_x, stack_y, stack_w, stack_h)
@@ -512,16 +553,17 @@ static NSTextField* value_label(NSRect frame) {
         cursor_x += width;
     }
 
-    CGFloat chip_w = 214.0;
+    CGFloat chip_gap = 14.0;
+    NSInteger chip_cols = std::clamp<NSInteger>((NSInteger)((content_w + chip_gap) / (190.0 + chip_gap)), 2, 4);
+    CGFloat chip_w = (content_w - (chip_cols - 1) * chip_gap) / chip_cols;
     CGFloat chip_h = 74.0;
-    CGFloat chip_gap = 18.0;
     for (size_t i = 0; i < parts.size(); ++i) {
         const auto& part = parts[i];
         double weighted = part.count * part.weight;
         double share = weighted / total;
         double co2 = fp.estimated_co2_mg * share;
-        CGFloat x = 18.0 + (CGFloat)(i % 3) * (chip_w + chip_gap);
-        CGFloat y = 258.0 + (CGFloat)(i / 3) * 84.0;
+        CGFloat x = 18.0 + (CGFloat)(i % (size_t)chip_cols) * (chip_w + chip_gap);
+        CGFloat y = 258.0 + (CGFloat)(i / (size_t)chip_cols) * 84.0;
 
         [gh_card_subtle() setFill];
         NSBezierPath* chip = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(x, y, chip_w, chip_h)
@@ -543,7 +585,7 @@ static NSTextField* value_label(NSRect frame) {
         [ns(fmt_co2(co2) + " CO2eq") drawAtPoint:NSMakePoint(x + 10, y + 50) withAttributes:mono_attr];
     }
 
-    CGFloat section_y = 526.0;
+    CGFloat section_y = 258.0 + ((parts.size() + (size_t)chip_cols - 1) / (size_t)chip_cols) * 84.0 + 16.0;
     if (!fp.callees.empty()) {
         [@"调用分布" drawAtPoint:NSMakePoint(18, section_y) withAttributes:title_attr];
         [@"被调用函数的估算碳排放，不计入当前函数自身指令拆分" drawAtPoint:NSMakePoint(86, section_y + 2)
@@ -576,7 +618,7 @@ static NSTextField* value_label(NSRect frame) {
         int shown = 0;
         for (const auto& call : calls) {
             CGFloat row_x = 28.0;
-            CGFloat row_w = 668.0;
+            CGFloat row_w = std::max<CGFloat>(320.0, self.bounds.size.width - 56.0);
             CGFloat row_h = 38.0;
             [gh_bg() setFill];
             NSBezierPath* row_box = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(row_x, section_y, row_w, row_h)
@@ -598,8 +640,9 @@ static NSTextField* value_label(NSRect frame) {
             [ns(shorten(call.name, 28)) drawAtPoint:NSMakePoint(row_x + 42, section_y + 10)
                                      withAttributes:text_attr];
 
-            CGFloat spark_x = row_x + 250;
-            CGFloat spark_w = 210.0;
+            CGFloat spark_x = row_x + std::min<CGFloat>(250.0, row_w * 0.38);
+            CGFloat value_x = row_x + row_w - 178.0;
+            CGFloat spark_w = std::max<CGFloat>(90.0, value_x - spark_x - 22.0);
             CGFloat spark_y = section_y + 15.0;
             [gh_border() setFill];
             NSBezierPath* track = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(spark_x, spark_y, spark_w, 8)
@@ -616,7 +659,7 @@ static NSTextField* value_label(NSRect frame) {
             }
 
             std::string value = call.known ? fmt_co2(call.co2) + " CO2eq" : "未估算";
-            [ns(value) drawAtPoint:NSMakePoint(row_x + 482, section_y + 10)
+            [ns(value) drawAtPoint:NSMakePoint(value_x, section_y + 10)
                     withAttributes:mono_attr];
 
             section_y += 46.0;
@@ -660,19 +703,34 @@ static NSTextField* value_label(NSRect frame) {
 
 @end
 
-@interface AppDelegate : NSObject <NSApplicationDelegate>
+@interface AppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
 @end
 
 @implementation AppDelegate {
     NSWindow* window_;
+    NSTextField* title_;
+    NSTextField* subtitle_;
+    NSView* side_;
+    NSTextField* config_title_;
+    NSTextField* source_title_;
     NSTextField* file_field_;
+    NSButton* browse_button_;
+    NSTextField* hw_title_;
     NSPopUpButton* hw_popup_;
+    NSTextField* grid_title_;
     NSPopUpButton* grid_popup_;
+    NSButton* analyze_button_;
     NSTextField* status_label_;
+    NSView* summary_;
+    NSTextField* co2_title_;
     NSTextField* co2_label_;
+    NSTextField* energy_title_;
     NSTextField* energy_label_;
+    NSTextField* count_title_;
     NSTextField* count_label_;
+    NSScrollView* chart_scroll_;
     CarbonChartView* chart_view_;
+    NSScrollView* detail_scroll_;
     CarbonDetailView* detail_view_;
 
     std::vector<std::string> hw_keys_;
@@ -708,48 +766,51 @@ static NSTextField* value_label(NSRect frame) {
                                               defer:NO];
     window_.title = @"GreenComputing 碳排放静态分析器";
     window_.minSize = NSMakeSize(1040, 660);
+    window_.delegate = self;
     [window_ center];
 
     NSView* root = window_.contentView;
     root.wantsLayer = YES;
     root.layer.backgroundColor = gh_bg().CGColor;
 
-    NSTextField* title = label(NSMakeRect(24, 714, 280, 28), @"GreenComputing", 22.0);
-    title.font = [NSFont systemFontOfSize:22.0 weight:NSFontWeightSemibold];
-    title.textColor = gh_text();
-    [root addSubview:title];
-    NSTextField* subtitle = label(NSMakeRect(216, 718, 220, 20), @"碳排放静态分析器", 13.0);
-    subtitle.textColor = gh_muted();
-    [root addSubview:subtitle];
+    title_ = label(NSMakeRect(24, 714, 280, 28), @"GreenComputing", 22.0);
+    title_.font = [NSFont systemFontOfSize:22.0 weight:NSFontWeightSemibold];
+    title_.textColor = gh_text();
+    [root addSubview:title_];
+    subtitle_ = label(NSMakeRect(216, 718, 220, 20), @"碳排放静态分析器", 13.0);
+    subtitle_.textColor = gh_muted();
+    [root addSubview:subtitle_];
 
-    NSView* side = [[NSView alloc] initWithFrame:NSMakeRect(24, 24, 292, 672)];
-    side.wantsLayer = YES;
-    side.layer.backgroundColor = gh_card().CGColor;
-    side.layer.borderColor = gh_border().CGColor;
-    side.layer.borderWidth = 1.0;
-    side.layer.cornerRadius = 8.0;
-    [root addSubview:side];
+    side_ = [[NSView alloc] initWithFrame:NSMakeRect(24, 24, 292, 672)];
+    side_.wantsLayer = YES;
+    side_.layer.backgroundColor = gh_card().CGColor;
+    side_.layer.borderColor = gh_border().CGColor;
+    side_.layer.borderWidth = 1.0;
+    side_.layer.cornerRadius = 8.0;
+    [root addSubview:side_];
 
-    NSTextField* config_title = label(NSMakeRect(44, 654, 120, 22), @"分析配置", 15.0);
-    config_title.font = [NSFont systemFontOfSize:15.0 weight:NSFontWeightSemibold];
-    config_title.textColor = gh_text();
-    [root addSubview:config_title];
+    config_title_ = label(NSMakeRect(44, 654, 120, 22), @"分析配置", 15.0);
+    config_title_.font = [NSFont systemFontOfSize:15.0 weight:NSFontWeightSemibold];
+    config_title_.textColor = gh_text();
+    [root addSubview:config_title_];
 
-    [root addSubview:label(NSMakeRect(44, 604, 120, 20), @"源文件", 13.0)];
+    source_title_ = label(NSMakeRect(44, 604, 120, 20), @"源文件", 13.0);
+    [root addSubview:source_title_];
     file_field_ = [[NSTextField alloc] initWithFrame:NSMakeRect(44, 574, 188, 28)];
     file_field_.stringValue = @"demo.cpp";
     file_field_.textColor = gh_text();
     file_field_.backgroundColor = gh_bg();
     [root addSubview:file_field_];
 
-    NSButton* browse = [[NSButton alloc] initWithFrame:NSMakeRect(238, 574, 58, 28)];
-    browse.title = @"选择";
-    browse.bezelStyle = NSBezelStyleRounded;
-    browse.target = self;
-    browse.action = @selector(selectFile:);
-    [root addSubview:browse];
+    browse_button_ = [[NSButton alloc] initWithFrame:NSMakeRect(238, 574, 58, 28)];
+    browse_button_.title = @"选择";
+    browse_button_.bezelStyle = NSBezelStyleRounded;
+    browse_button_.target = self;
+    browse_button_.action = @selector(selectFile:);
+    [root addSubview:browse_button_];
 
-    [root addSubview:label(NSMakeRect(44, 526, 120, 20), @"硬件配置", 13.0)];
+    hw_title_ = label(NSMakeRect(44, 526, 120, 20), @"硬件配置", 13.0);
+    [root addSubview:hw_title_];
     hw_popup_ = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(44, 494, 252, 30)];
     for (const auto& key : hw_keys_) {
         const auto it = HARDWARE_PROFILES.find(key);
@@ -758,7 +819,8 @@ static NSTextField* value_label(NSRect frame) {
     [hw_popup_ selectItemAtIndex:2];
     [root addSubview:hw_popup_];
 
-    [root addSubview:label(NSMakeRect(44, 446, 120, 20), @"电网区域", 13.0)];
+    grid_title_ = label(NSMakeRect(44, 446, 120, 20), @"电网区域", 13.0);
+    [root addSubview:grid_title_];
     grid_popup_ = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(44, 414, 252, 30)];
     for (const auto& key : grid_keys_) {
         const auto it = GRID_REGIONS.find(key);
@@ -773,72 +835,136 @@ static NSTextField* value_label(NSRect frame) {
     [grid_popup_ selectItemAtIndex:13];
     [root addSubview:grid_popup_];
 
-    NSButton* analyze = [[NSButton alloc] initWithFrame:NSMakeRect(44, 354, 252, 34)];
-    analyze.title = @"开始分析";
-    analyze.bezelStyle = NSBezelStyleRounded;
-    analyze.contentTintColor = gh_blue();
-    analyze.target = self;
-    analyze.action = @selector(runAnalysis:);
-    [root addSubview:analyze];
+    analyze_button_ = [[NSButton alloc] initWithFrame:NSMakeRect(44, 354, 252, 34)];
+    analyze_button_.title = @"开始分析";
+    analyze_button_.bezelStyle = NSBezelStyleRounded;
+    analyze_button_.contentTintColor = gh_blue();
+    analyze_button_.target = self;
+    analyze_button_.action = @selector(runAnalysis:);
+    [root addSubview:analyze_button_];
 
     status_label_ = label(NSMakeRect(44, 306, 252, 40), @"等待分析", 13.0);
     status_label_.textColor = gh_muted();
     status_label_.lineBreakMode = NSLineBreakByWordWrapping;
     [root addSubview:status_label_];
 
-    NSView* summary = [[NSView alloc] initWithFrame:NSMakeRect(336, 616, 820, 80)];
-    summary.wantsLayer = YES;
-    summary.layer.backgroundColor = gh_card().CGColor;
-    summary.layer.borderColor = gh_border().CGColor;
-    summary.layer.borderWidth = 1.0;
-    summary.layer.cornerRadius = 8.0;
-    [root addSubview:summary];
+    summary_ = [[NSView alloc] initWithFrame:NSMakeRect(336, 616, 820, 80)];
+    summary_.wantsLayer = YES;
+    summary_.layer.backgroundColor = gh_card().CGColor;
+    summary_.layer.borderColor = gh_border().CGColor;
+    summary_.layer.borderWidth = 1.0;
+    summary_.layer.cornerRadius = 8.0;
+    [root addSubview:summary_];
 
-    [root addSubview:label(NSMakeRect(362, 668, 120, 18), @"总碳排放", 12.0)];
+    co2_title_ = label(NSMakeRect(362, 668, 120, 18), @"总碳排放", 12.0);
+    [root addSubview:co2_title_];
     co2_label_ = value_label(NSMakeRect(362, 640, 190, 24));
     [root addSubview:co2_label_];
 
-    [root addSubview:label(NSMakeRect(604, 668, 120, 18), @"总能耗", 12.0)];
+    energy_title_ = label(NSMakeRect(604, 668, 120, 18), @"总能耗", 12.0);
+    [root addSubview:energy_title_];
     energy_label_ = value_label(NSMakeRect(604, 640, 190, 24));
     [root addSubview:energy_label_];
 
-    [root addSubview:label(NSMakeRect(846, 668, 120, 18), @"函数数", 12.0)];
+    count_title_ = label(NSMakeRect(846, 668, 120, 18), @"函数数", 12.0);
+    [root addSubview:count_title_];
     count_label_ = value_label(NSMakeRect(846, 640, 190, 24));
     [root addSubview:count_label_];
 
-    NSScrollView* chart_scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(336, 324, 820, 272)];
-    chart_scroll.hasVerticalScroller = YES;
-    chart_scroll.hasHorizontalScroller = YES;
-    chart_scroll.borderType = NSNoBorder;
-    chart_scroll.wantsLayer = YES;
-    chart_scroll.layer.backgroundColor = gh_card().CGColor;
-    chart_scroll.layer.borderColor = gh_border().CGColor;
-    chart_scroll.layer.borderWidth = 1.0;
-    chart_scroll.layer.cornerRadius = 8.0;
+    chart_scroll_ = [[NSScrollView alloc] initWithFrame:NSMakeRect(336, 324, 820, 272)];
+    chart_scroll_.hasVerticalScroller = YES;
+    chart_scroll_.hasHorizontalScroller = YES;
+    chart_scroll_.borderType = NSNoBorder;
+    chart_scroll_.wantsLayer = YES;
+    chart_scroll_.layer.backgroundColor = gh_card().CGColor;
+    chart_scroll_.layer.borderColor = gh_border().CGColor;
+    chart_scroll_.layer.borderWidth = 1.0;
+    chart_scroll_.layer.cornerRadius = 8.0;
     chart_view_ = [[CarbonChartView alloc] initWithFrame:NSMakeRect(0, 0, 820, 272)];
     chart_view_.target = self;
     chart_view_.action = @selector(chartClicked:);
-    chart_scroll.documentView = chart_view_;
-    [root addSubview:chart_scroll];
+    chart_scroll_.documentView = chart_view_;
+    [root addSubview:chart_scroll_];
 
-    NSScrollView* detail_scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(336, 24, 820, 280)];
-    detail_scroll.hasVerticalScroller = YES;
-    detail_scroll.borderType = NSNoBorder;
-    detail_scroll.wantsLayer = YES;
-    detail_scroll.layer.backgroundColor = gh_card().CGColor;
-    detail_scroll.layer.borderColor = gh_border().CGColor;
-    detail_scroll.layer.borderWidth = 1.0;
-    detail_scroll.layer.cornerRadius = 8.0;
+    detail_scroll_ = [[NSScrollView alloc] initWithFrame:NSMakeRect(336, 24, 820, 280)];
+    detail_scroll_.hasVerticalScroller = YES;
+    detail_scroll_.borderType = NSNoBorder;
+    detail_scroll_.wantsLayer = YES;
+    detail_scroll_.layer.backgroundColor = gh_card().CGColor;
+    detail_scroll_.layer.borderColor = gh_border().CGColor;
+    detail_scroll_.layer.borderWidth = 1.0;
+    detail_scroll_.layer.cornerRadius = 8.0;
     detail_view_ = [[CarbonDetailView alloc] initWithFrame:NSMakeRect(0, 0, 820, 250)];
-    detail_scroll.documentView = detail_view_;
-    [root addSubview:detail_scroll];
+    detail_scroll_.documentView = detail_view_;
+    [root addSubview:detail_scroll_];
 
+    [self layoutContent];
     [window_ makeKeyAndOrderFront:nil];
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender {
     (void)sender;
     return YES;
+}
+
+- (void)windowDidResize:(NSNotification*)notification {
+    (void)notification;
+    [self layoutContent];
+}
+
+- (void)layoutContent {
+    NSView* root = window_.contentView;
+    if (!root)
+        return;
+
+    const CGFloat width = root.bounds.size.width;
+    const CGFloat height = root.bounds.size.height;
+    const CGFloat margin = 24.0;
+    const CGFloat sidebar_w = 292.0;
+    const CGFloat gap = 20.0;
+    const CGFloat right_x = margin + sidebar_w + gap;
+    const CGFloat right_w = std::max<CGFloat>(640.0, width - right_x - margin);
+
+    title_.frame = NSMakeRect(margin, height - 46.0, 180.0, 28.0);
+    subtitle_.frame = NSMakeRect(margin + 192.0, height - 42.0, 220.0, 20.0);
+    side_.frame = NSMakeRect(margin, margin, sidebar_w, std::max<CGFloat>(520.0, height - 88.0));
+
+    const CGFloat side_x = margin + 20.0;
+    const CGFloat side_w = sidebar_w - 40.0;
+    config_title_.frame = NSMakeRect(side_x, height - 106.0, side_w, 22.0);
+    source_title_.frame = NSMakeRect(side_x, height - 156.0, side_w, 20.0);
+    file_field_.frame = NSMakeRect(side_x, height - 186.0, side_w - 64.0, 28.0);
+    browse_button_.frame = NSMakeRect(side_x + side_w - 58.0, height - 186.0, 58.0, 28.0);
+    hw_title_.frame = NSMakeRect(side_x, height - 234.0, side_w, 20.0);
+    hw_popup_.frame = NSMakeRect(side_x, height - 266.0, side_w, 30.0);
+    grid_title_.frame = NSMakeRect(side_x, height - 314.0, side_w, 20.0);
+    grid_popup_.frame = NSMakeRect(side_x, height - 346.0, side_w, 30.0);
+    analyze_button_.frame = NSMakeRect(side_x, height - 406.0, side_w, 34.0);
+    status_label_.frame = NSMakeRect(side_x, height - 454.0, side_w, 66.0);
+
+    const CGFloat summary_h = 80.0;
+    const CGFloat summary_y = height - 144.0;
+    summary_.frame = NSMakeRect(right_x, summary_y, right_w, summary_h);
+
+    const CGFloat metric_w = right_w / 3.0;
+    NSArray<NSTextField*>* titles = @[ co2_title_, energy_title_, count_title_ ];
+    NSArray<NSTextField*>* values = @[ co2_label_, energy_label_, count_label_ ];
+    for (NSInteger i = 0; i < 3; ++i) {
+        CGFloat x = right_x + 26.0 + metric_w * i;
+        [titles[(NSUInteger)i] setFrame:NSMakeRect(x, summary_y + 52.0, metric_w - 42.0, 18.0)];
+        [values[(NSUInteger)i] setFrame:NSMakeRect(x, summary_y + 24.0, metric_w - 42.0, 24.0)];
+    }
+
+    const CGFloat right_bottom = margin;
+    const CGFloat chart_top = summary_y - gap;
+    const CGFloat right_available_h = std::max<CGFloat>(420.0, chart_top - right_bottom);
+    const CGFloat detail_h = std::max<CGFloat>(220.0, std::floor((right_available_h - gap) * 0.48));
+    const CGFloat chart_h = std::max<CGFloat>(220.0, right_available_h - gap - detail_h);
+    detail_scroll_.frame = NSMakeRect(right_x, right_bottom, right_w, detail_h);
+    chart_scroll_.frame = NSMakeRect(right_x, right_bottom + detail_h + gap, right_w, chart_h);
+
+    [chart_view_ reloadData];
+    [detail_view_ reloadData];
 }
 
 - (void)selectFile:(id)sender {
