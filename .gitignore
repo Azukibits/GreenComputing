@@ -1,0 +1,13 @@
+cmake-build-*/
+build/
+.idea/
+.claude/
+
+GreenComputing
+GreenComputingCLI
+*.app
+*.dSYM/
+*.o
+*.a
+
+.DS_Store
