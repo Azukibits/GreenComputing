@@ -970,7 +970,7 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     grid_title_.frame = NSMakeRect(side_x, height - 314.0, side_w, 20.0);
     grid_popup_.frame = NSMakeRect(side_x, height - 346.0, side_w, 30.0);
     analyze_button_.frame = NSMakeRect(side_x, height - 406.0, side_w, 34.0);
-    status_label_.frame = NSMakeRect(side_x, height - 454.0, side_w, 66.0);
+    status_label_.frame = NSMakeRect(side_x, height - 492.0, side_w, 66.0);
 
     const CGFloat summary_h = 80.0;
     const CGFloat summary_y = height - 144.0;
