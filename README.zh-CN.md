@@ -12,6 +12,7 @@ GreenComputing 是一个用于估算 C++ 函数级能耗和碳排放的静态分
 
 - 函数级能耗与碳排放估算
 - macOS、Windows、Linux 图形界面
+- 图形界面支持中文和英文切换
 - Windows、Linux、macOS 命令行版本
 - 碳排放热点排名
 - 函数对比折线图

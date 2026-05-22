@@ -12,6 +12,7 @@ The analyzer reads C++ source files, identifies functions, estimates instruction
 
 - Function-level energy and carbon estimation
 - Desktop interface on macOS, Windows, and Linux
+- Chinese and English graphical interface
 - Command-line interface for quick analysis
 - Carbon hotspot ranking
 - Function comparison chart

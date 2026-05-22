@@ -121,6 +121,7 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
 @interface CarbonChartView : NSView
 @property(nonatomic, assign) ProgramProfile* program;
 @property(nonatomic, assign) NSInteger selectedRow;
+@property(nonatomic, assign) BOOL english;
 @property(nonatomic, weak) id target;
 @property(nonatomic, assign) SEL action;
 - (void)reloadData;
@@ -175,13 +176,16 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
         NSForegroundColorAttributeName: gh_muted()
     };
 
-    [@"函数碳排放折线图" drawAtPoint:NSMakePoint(16, 14) withAttributes:title_attr];
-    [@"最高函数单独统计，其余函数按字母顺序和非线性刻度绘制" drawAtPoint:NSMakePoint(150, 16)
-                                                       withAttributes:muted_attr];
+    NSString* chart_title = _english ? @"Function Carbon Chart" : @"函数碳排放折线图";
+    NSString* chart_note = _english ? @"Top function is summarized separately; others use nonlinear scaling"
+                                    : @"最高函数单独统计，其余函数按字母顺序和非线性刻度绘制";
+    [chart_title drawAtPoint:NSMakePoint(16, 14) withAttributes:title_attr];
+    [chart_note drawAtPoint:NSMakePoint(_english ? 176 : 150, 16) withAttributes:muted_attr];
 
     if (!_program || _program->functions.empty()) {
-        [@"完成分析后在这里显示每个函数的碳排放。" drawAtPoint:NSMakePoint(16, 58)
-                                                withAttributes:muted_attr];
+        NSString* empty = _english ? @"Run analysis to show per-function carbon output here."
+                                   : @"完成分析后在这里显示每个函数的碳排放。";
+        [empty drawAtPoint:NSMakePoint(16, 58) withAttributes:muted_attr];
         return;
     }
 
@@ -208,7 +212,7 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
         [gh_border() setStroke];
         [box setLineWidth:1.0];
         [box stroke];
-        [ns("最高: " + shorten(top_fp.name, 14))
+        [ns((_english ? "Top: " : "最高: ") + shorten(top_fp.name, 14))
             drawAtPoint:NSMakePoint(top_card.origin.x + 12, top_card.origin.y + 6)
          withAttributes:muted_attr];
         [ns(fmt_co2(top_fp.estimated_co2_mg) + " CO2eq")
@@ -217,8 +221,9 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     }
 
     if (plotted.empty()) {
-        [@"除最高函数外没有可绘制的函数。" drawAtPoint:NSMakePoint(16, 58)
-                                            withAttributes:muted_attr];
+        NSString* empty = _english ? @"No drawable functions besides the top function."
+                                   : @"除最高函数外没有可绘制的函数。";
+        [empty drawAtPoint:NSMakePoint(16, 58) withAttributes:muted_attr];
         return;
     }
 
@@ -376,6 +381,7 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
 @interface CarbonDetailView : NSView
 @property(nonatomic, assign) ProgramProfile* program;
 @property(nonatomic, assign) NSInteger selectedRow;
+@property(nonatomic, assign) BOOL english;
 @property(nonatomic, copy) NSString* message;
 - (void)reloadData;
 @end
@@ -462,14 +468,14 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     };
 
     if (!_program || _selectedRow < 0 || _selectedRow >= (NSInteger)_program->functions.size()) {
-        NSString* msg = _message ? _message : @"选择函数后显示详情。";
+        NSString* msg = _message ? _message : (_english ? @"Select a function to show details." : @"选择函数后显示详情。");
         [msg drawAtPoint:NSMakePoint(18, 18) withAttributes:muted_attr];
         return;
     }
 
     const auto& fp = _program->functions[(size_t)_selectedRow];
     const CGFloat content_w = std::max<CGFloat>(320.0, self.bounds.size.width - 36.0);
-    [@"函数详情" drawAtPoint:NSMakePoint(18, 16) withAttributes:title_attr];
+    [(_english ? @"Function Details" : @"函数详情") drawAtPoint:NSMakePoint(18, 16) withAttributes:title_attr];
     [ns(fp.name) drawAtPoint:NSMakePoint(18, 42)
               withAttributes:@{
                   NSFontAttributeName: [NSFont systemFontOfSize:18.0 weight:NSFontWeightSemibold],
@@ -484,21 +490,24 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
 
     const CGFloat metric_gap = 16.0;
     const CGFloat metric_w = (content_w - metric_gap * 3.0) / 4.0;
-    [self drawMetric:@"碳排放"
+    [self drawMetric:_english ? @"Carbon" : @"碳排放"
                value:ns(fmt_co2(fp.estimated_co2_mg) + " CO2eq")
                frame:NSMakeRect(18, 102, metric_w, 66)
                color:gh_green()];
-    [self drawMetric:@"能耗"
+    [self drawMetric:_english ? @"Energy" : @"能耗"
                value:ns(fmt_energy(fp.estimated_joules))
                frame:NSMakeRect(18 + (metric_w + metric_gap), 102, metric_w, 66)
                color:gh_blue()];
-    [self drawMetric:@"能耗评分"
+    [self drawMetric:_english ? @"Score" : @"能耗评分"
                value:ns(std::to_string((long long)fp.energy_score))
                frame:NSMakeRect(18 + (metric_w + metric_gap) * 2.0, 102, metric_w, 66)
                color:gh_text()];
     std::ostringstream loop_text;
-    loop_text << "深度 " << fp.loops.depth << " / " << fp.loops.count << " 个";
-    [self drawMetric:@"循环"
+    if (_english)
+        loop_text << "Depth " << fp.loops.depth << " / " << fp.loops.count;
+    else
+        loop_text << "深度 " << fp.loops.depth << " / " << fp.loops.count << " 个";
+    [self drawMetric:_english ? @"Loops" : @"循环"
                value:ns(loop_text.str())
                frame:NSMakeRect(18 + (metric_w + metric_gap) * 3.0, 102, metric_w, 66)
                color:fp.loops.depth >= 2 ? gh_orange() : gh_text()];
@@ -511,12 +520,12 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     };
     const std::vector<Part> parts = {
         {"ALU", fp.raw.alu, weight_of(InstrCat::ALU), gh_blue()},
-        {"浮点", fp.raw.fpu, weight_of(InstrCat::FPU), gh_orange()},
-        {"内存", fp.raw.memory, weight_of(InstrCat::MEMORY), gh_red()},
-        {"分支", fp.raw.branch, weight_of(InstrCat::BRANCH), gh_muted()},
+        {_english ? "FPU" : "浮点", fp.raw.fpu, weight_of(InstrCat::FPU), gh_orange()},
+        {_english ? "Memory" : "内存", fp.raw.memory, weight_of(InstrCat::MEMORY), gh_red()},
+        {_english ? "Branch" : "分支", fp.raw.branch, weight_of(InstrCat::BRANCH), gh_muted()},
         {"IO", fp.raw.io, weight_of(InstrCat::IO), gh_red()},
         {"SIMD", fp.raw.simd, weight_of(InstrCat::SIMD), gh_green()},
-        {"同步", fp.raw.atomic, weight_of(InstrCat::ATOMIC), gh_orange()},
+        {_english ? "Sync" : "同步", fp.raw.atomic, weight_of(InstrCat::ATOMIC), gh_orange()},
     };
 
     double total = 0.0;
@@ -525,8 +534,12 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     if (total <= 0.0)
         total = 1.0;
 
-    [@"指令贡献拆分" drawAtPoint:NSMakePoint(18, 194) withAttributes:title_attr];
-    [@"按类别权重估算，不包含真实运行采样" drawAtPoint:NSMakePoint(122, 196) withAttributes:muted_attr];
+    [(_english ? @"Instruction Contribution" : @"指令贡献拆分")
+        drawAtPoint:NSMakePoint(18, 194)
+     withAttributes:title_attr];
+    [(_english ? @"Estimated by category weights; runtime sampling is not included" : @"按类别权重估算，不包含真实运行采样")
+        drawAtPoint:NSMakePoint(_english ? 176 : 122, 196)
+     withAttributes:muted_attr];
 
     CGFloat stack_x = 18.0;
     CGFloat stack_y = 226.0;
@@ -587,9 +600,10 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
 
     CGFloat section_y = 258.0 + ((parts.size() + (size_t)chip_cols - 1) / (size_t)chip_cols) * 84.0 + 16.0;
     if (!fp.callees.empty()) {
-        [@"调用分布" drawAtPoint:NSMakePoint(18, section_y) withAttributes:title_attr];
-        [@"被调用函数的估算碳排放，不计入当前函数自身指令拆分" drawAtPoint:NSMakePoint(86, section_y + 2)
-                                                        withAttributes:muted_attr];
+        [(_english ? @"Call Distribution" : @"调用分布") drawAtPoint:NSMakePoint(18, section_y) withAttributes:title_attr];
+        [(_english ? @"Estimated carbon output of called functions" : @"被调用函数的估算碳排放，不计入当前函数自身指令拆分")
+            drawAtPoint:NSMakePoint(_english ? 134 : 86, section_y + 2)
+         withAttributes:muted_attr];
         section_y += 32.0;
 
         struct CallItem {
@@ -658,7 +672,7 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
                 [fill fill];
             }
 
-            std::string value = call.known ? fmt_co2(call.co2) + " CO2eq" : "未估算";
+            std::string value = call.known ? fmt_co2(call.co2) + " CO2eq" : (_english ? "Unknown" : "未估算");
             [ns(value) drawAtPoint:NSMakePoint(value_x, section_y + 10)
                     withAttributes:mono_attr];
 
@@ -667,18 +681,18 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
                 break;
         }
         if (calls.size() > 8)
-            [ns("还有 " + std::to_string(calls.size() - 8) + " 个调用未显示")
+            [ns((_english ? "Hidden calls: " : "还有 ") + std::to_string(calls.size() - 8) + (_english ? "" : " 个调用未显示"))
                 drawAtPoint:NSMakePoint(28, section_y)
              withAttributes:muted_attr];
         section_y += 22.0;
     }
 
     if (!fp.warnings.empty() || !fp.suggestions.empty()) {
-        [@"提示" drawAtPoint:NSMakePoint(18, section_y) withAttributes:title_attr];
+        [(_english ? @"Notes" : @"提示") drawAtPoint:NSMakePoint(18, section_y) withAttributes:title_attr];
         section_y += 28.0;
         int shown = 0;
         for (const auto& item : fp.warnings) {
-            [ns("警告: " + item) drawAtPoint:NSMakePoint(28, section_y)
+            [ns((_english ? "Warning: " : "警告: ") + item) drawAtPoint:NSMakePoint(28, section_y)
                               withAttributes:@{
                                   NSFontAttributeName: [NSFont systemFontOfSize:12.0],
                                   NSForegroundColorAttributeName: gh_red()
@@ -690,7 +704,7 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
         for (const auto& item : fp.suggestions) {
             if (shown >= 6)
                 break;
-            [ns("建议: " + item) drawAtPoint:NSMakePoint(28, section_y)
+            [ns((_english ? "Suggestion: " : "建议: ") + item) drawAtPoint:NSMakePoint(28, section_y)
                               withAttributes:@{
                                   NSFontAttributeName: [NSFont systemFontOfSize:12.0],
                                   NSForegroundColorAttributeName: gh_green()
@@ -712,6 +726,8 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     NSTextField* subtitle_;
     NSView* side_;
     NSTextField* config_title_;
+    NSTextField* language_title_;
+    NSPopUpButton* language_popup_;
     NSTextField* source_title_;
     NSTextField* file_field_;
     NSButton* browse_button_;
@@ -736,11 +752,13 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     std::vector<std::string> hw_keys_;
     std::vector<std::string> grid_keys_;
     ProgramProfile program_;
+    BOOL english_;
 }
 
 - (instancetype)init {
     self = [super init];
     if (self) {
+        english_ = NO;
         hw_keys_ = {
             "rpi4", "laptop_low", "laptop_mid", "desktop_mid",
             "desktop_high", "server_1u", "server_hpc"
@@ -793,6 +811,15 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     config_title_.font = [NSFont systemFontOfSize:15.0 weight:NSFontWeightSemibold];
     config_title_.textColor = gh_text();
     [root addSubview:config_title_];
+
+    language_title_ = label(NSMakeRect(44, 604, 120, 20), @"语言", 13.0);
+    [root addSubview:language_title_];
+    language_popup_ = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(44, 574, 252, 30)];
+    [language_popup_ addItemWithTitle:@"中文"];
+    [language_popup_ addItemWithTitle:@"English"];
+    language_popup_.target = self;
+    language_popup_.action = @selector(languageChanged:);
+    [root addSubview:language_popup_];
 
     source_title_ = label(NSMakeRect(44, 604, 120, 20), @"源文件", 13.0);
     [root addSubview:source_title_];
@@ -899,6 +926,7 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     [root addSubview:detail_scroll_];
 
     [self layoutContent];
+    [self retranslate];
     [window_ makeKeyAndOrderFront:nil];
 }
 
@@ -932,15 +960,17 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     const CGFloat side_x = margin + 20.0;
     const CGFloat side_w = sidebar_w - 40.0;
     config_title_.frame = NSMakeRect(side_x, height - 106.0, side_w, 22.0);
-    source_title_.frame = NSMakeRect(side_x, height - 156.0, side_w, 20.0);
-    file_field_.frame = NSMakeRect(side_x, height - 186.0, side_w - 64.0, 28.0);
-    browse_button_.frame = NSMakeRect(side_x + side_w - 58.0, height - 186.0, 58.0, 28.0);
-    hw_title_.frame = NSMakeRect(side_x, height - 234.0, side_w, 20.0);
-    hw_popup_.frame = NSMakeRect(side_x, height - 266.0, side_w, 30.0);
-    grid_title_.frame = NSMakeRect(side_x, height - 314.0, side_w, 20.0);
-    grid_popup_.frame = NSMakeRect(side_x, height - 346.0, side_w, 30.0);
-    analyze_button_.frame = NSMakeRect(side_x, height - 406.0, side_w, 34.0);
-    status_label_.frame = NSMakeRect(side_x, height - 454.0, side_w, 66.0);
+    language_title_.frame = NSMakeRect(side_x, height - 156.0, side_w, 20.0);
+    language_popup_.frame = NSMakeRect(side_x, height - 188.0, side_w, 30.0);
+    source_title_.frame = NSMakeRect(side_x, height - 236.0, side_w, 20.0);
+    file_field_.frame = NSMakeRect(side_x, height - 266.0, side_w - 64.0, 28.0);
+    browse_button_.frame = NSMakeRect(side_x + side_w - 58.0, height - 266.0, 58.0, 28.0);
+    hw_title_.frame = NSMakeRect(side_x, height - 314.0, side_w, 20.0);
+    hw_popup_.frame = NSMakeRect(side_x, height - 346.0, side_w, 30.0);
+    grid_title_.frame = NSMakeRect(side_x, height - 394.0, side_w, 20.0);
+    grid_popup_.frame = NSMakeRect(side_x, height - 426.0, side_w, 30.0);
+    analyze_button_.frame = NSMakeRect(side_x, height - 486.0, side_w, 34.0);
+    status_label_.frame = NSMakeRect(side_x, height - 534.0, side_w, 82.0);
 
     const CGFloat summary_h = 80.0;
     const CGFloat summary_y = height - 144.0;
@@ -965,6 +995,104 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
 
     [chart_view_ reloadData];
     [detail_view_ reloadData];
+}
+
+- (NSString*)textCN:(NSString*)cn en:(NSString*)en {
+    return english_ ? en : cn;
+}
+
+- (NSString*)hardwareTitleForKey:(const std::string&)key {
+    if (!english_) {
+        const auto it = HARDWARE_PROFILES.find(key);
+        return ns(it != HARDWARE_PROFILES.end() ? it->second.name : key);
+    }
+    if (key == "rpi4") return @"Raspberry Pi 4";
+    if (key == "laptop_low") return @"Laptop Low Power (~15W TDP)";
+    if (key == "laptop_mid") return @"Laptop Mid Range (~28W TDP)";
+    if (key == "desktop_mid") return @"Desktop Mid Range (~65W TDP)";
+    if (key == "desktop_high") return @"Desktop High End (~125W TDP)";
+    if (key == "server_1u") return @"Server 1U";
+    if (key == "server_hpc") return @"Server HPC Node";
+    return ns(key);
+}
+
+- (NSString*)gridTitleForKey:(const std::string&)key {
+    const auto it = GRID_REGIONS.find(key);
+    std::string name = key;
+    double carbon = 0.0;
+    if (it != GRID_REGIONS.end()) {
+        carbon = it->second.carbon_intensity;
+        name = it->second.name;
+    }
+    if (english_) {
+        if (key == "cn") name = "China";
+        else if (key == "us") name = "United States Average";
+        else if (key == "us_ca") name = "United States California";
+        else if (key == "us_tx") name = "United States Texas";
+        else if (key == "eu") name = "European Union Average";
+        else if (key == "de") name = "Germany";
+        else if (key == "fr") name = "France";
+        else if (key == "no") name = "Norway";
+        else if (key == "uk") name = "United Kingdom";
+        else if (key == "jp") name = "Japan";
+        else if (key == "au") name = "Australia";
+        else if (key == "br") name = "Brazil";
+        else if (key == "in") name = "India";
+        else if (key == "global") name = "Global Average";
+    }
+    std::ostringstream ss;
+    ss << name << " (" << (int)carbon << ")";
+    return ns(ss.str());
+}
+
+- (void)reloadOptionTitles {
+    NSInteger hw_index = hw_popup_.indexOfSelectedItem >= 0 ? hw_popup_.indexOfSelectedItem : 2;
+    NSInteger grid_index = grid_popup_.indexOfSelectedItem >= 0 ? grid_popup_.indexOfSelectedItem : 13;
+
+    [hw_popup_ removeAllItems];
+    for (const auto& key : hw_keys_)
+        [hw_popup_ addItemWithTitle:[self hardwareTitleForKey:key]];
+    [hw_popup_ selectItemAtIndex:std::min<NSInteger>(hw_index, hw_popup_.numberOfItems - 1)];
+
+    [grid_popup_ removeAllItems];
+    for (const auto& key : grid_keys_)
+        [grid_popup_ addItemWithTitle:[self gridTitleForKey:key]];
+    [grid_popup_ selectItemAtIndex:std::min<NSInteger>(grid_index, grid_popup_.numberOfItems - 1)];
+}
+
+- (void)retranslate {
+    window_.title = [self textCN:@"GreenComputing 碳排放静态分析器" en:@"GreenComputing Carbon Static Analyzer"];
+    subtitle_.stringValue = [self textCN:@"碳排放静态分析器" en:@"Carbon Static Analyzer"];
+    config_title_.stringValue = [self textCN:@"分析配置" en:@"Analysis Config"];
+    language_title_.stringValue = [self textCN:@"语言" en:@"Language"];
+    source_title_.stringValue = [self textCN:@"源文件" en:@"Source File"];
+    browse_button_.title = [self textCN:@"选择" en:@"Choose"];
+    hw_title_.stringValue = [self textCN:@"硬件配置" en:@"Hardware Profile"];
+    grid_title_.stringValue = [self textCN:@"电网区域" en:@"Grid Region"];
+    analyze_button_.title = [self textCN:@"开始分析" en:@"Run Analysis"];
+    co2_title_.stringValue = [self textCN:@"总碳排放" en:@"Total Carbon"];
+    energy_title_.stringValue = [self textCN:@"总能耗" en:@"Total Energy"];
+    count_title_.stringValue = [self textCN:@"函数数" en:@"Functions"];
+
+    [self reloadOptionTitles];
+    chart_view_.english = english_;
+    detail_view_.english = english_;
+    if ([status_label_.stringValue isEqualToString:@"等待分析"] ||
+        [status_label_.stringValue isEqualToString:@"Waiting for analysis"])
+        status_label_.stringValue = [self textCN:@"等待分析" en:@"Waiting for analysis"];
+    if ([status_label_.stringValue isEqualToString:@"分析完成"] ||
+        [status_label_.stringValue isEqualToString:@"Analysis complete"])
+        status_label_.stringValue = [self textCN:@"分析完成" en:@"Analysis complete"];
+    if (!detail_view_.program && detail_view_.selectedRow < 0)
+        detail_view_.message = [self textCN:@"选择源文件并点击“开始分析”。" en:@"Choose a source file and click Run Analysis."];
+    [chart_view_ reloadData];
+    [detail_view_ reloadData];
+}
+
+- (void)languageChanged:(id)sender {
+    (void)sender;
+    english_ = language_popup_.indexOfSelectedItem == 1;
+    [self retranslate];
 }
 
 - (void)selectFile:(id)sender {
@@ -992,14 +1120,14 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     }
 
     if (!std::filesystem::exists(path)) {
-        [self setError:("找不到源文件: " + path)];
+        [self setError:((english_ ? "Source file not found: " : "找不到源文件: ") + path)];
         return;
     }
 
     const auto hw_index = (size_t)hw_popup_.indexOfSelectedItem;
     const auto grid_index = (size_t)grid_popup_.indexOfSelectedItem;
     if (hw_index >= hw_keys_.size() || grid_index >= grid_keys_.size()) {
-        [self setError:"配置无效"];
+        [self setError:(english_ ? "Invalid configuration" : "配置无效")];
         return;
     }
 
@@ -1008,7 +1136,7 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     auto hw_it = HARDWARE_PROFILES.find(hw_key);
     auto grid_it = GRID_REGIONS.find(grid_key);
     if (hw_it == HARDWARE_PROFILES.end() || grid_it == GRID_REGIONS.end()) {
-        [self setError:"配置无效"];
+        [self setError:(english_ ? "Invalid configuration" : "配置无效")];
         return;
     }
 
@@ -1016,7 +1144,7 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
         StaticAnalyzer analyzer;
         auto functions = analyzer.analyze(path);
         if (functions.empty()) {
-            [self setError:"没有识别到函数定义"];
+            [self setError:(english_ ? "No function definitions were detected" : "没有识别到函数定义")];
             return;
         }
 
@@ -1033,7 +1161,7 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
         return;
     }
 
-    status_label_.stringValue = @"分析完成";
+    status_label_.stringValue = [self textCN:@"分析完成" en:@"Analysis complete"];
     status_label_.textColor = gh_muted();
     co2_label_.stringValue = ns(fmt_co2(program_.total_co2_mg) + " CO2eq");
     energy_label_.stringValue = ns(fmt_energy(program_.total_joules));
@@ -1068,7 +1196,7 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     if (row < 0 || row >= (NSInteger)program_.functions.size()) {
         detail_view_.program = nullptr;
         detail_view_.selectedRow = -1;
-        detail_view_.message = @"选择折线图中的函数查看详情。";
+        detail_view_.message = [self textCN:@"选择折线图中的函数查看详情。" en:@"Select a function in the chart to show details."];
         [detail_view_ reloadData];
         return;
     }
