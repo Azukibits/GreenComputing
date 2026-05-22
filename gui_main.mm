@@ -812,9 +812,9 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     config_title_.textColor = gh_text();
     [root addSubview:config_title_];
 
-    language_title_ = label(NSMakeRect(44, 604, 120, 20), @"语言", 13.0);
+    language_title_ = label(NSMakeRect(950, 718, 70, 20), @"语言", 13.0);
     [root addSubview:language_title_];
-    language_popup_ = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(44, 574, 252, 30)];
+    language_popup_ = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(1014, 714, 130, 30)];
     [language_popup_ addItemWithTitle:@"中文"];
     [language_popup_ addItemWithTitle:@"English"];
     language_popup_.target = self;
@@ -960,17 +960,17 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     const CGFloat side_x = margin + 20.0;
     const CGFloat side_w = sidebar_w - 40.0;
     config_title_.frame = NSMakeRect(side_x, height - 106.0, side_w, 22.0);
-    language_title_.frame = NSMakeRect(side_x, height - 156.0, side_w, 20.0);
-    language_popup_.frame = NSMakeRect(side_x, height - 188.0, side_w, 30.0);
-    source_title_.frame = NSMakeRect(side_x, height - 236.0, side_w, 20.0);
-    file_field_.frame = NSMakeRect(side_x, height - 266.0, side_w - 64.0, 28.0);
-    browse_button_.frame = NSMakeRect(side_x + side_w - 58.0, height - 266.0, 58.0, 28.0);
-    hw_title_.frame = NSMakeRect(side_x, height - 314.0, side_w, 20.0);
-    hw_popup_.frame = NSMakeRect(side_x, height - 346.0, side_w, 30.0);
-    grid_title_.frame = NSMakeRect(side_x, height - 394.0, side_w, 20.0);
-    grid_popup_.frame = NSMakeRect(side_x, height - 426.0, side_w, 30.0);
-    analyze_button_.frame = NSMakeRect(side_x, height - 486.0, side_w, 34.0);
-    status_label_.frame = NSMakeRect(side_x, height - 534.0, side_w, 82.0);
+    language_title_.frame = NSMakeRect(width - 190.0, height - 42.0, 70.0, 20.0);
+    language_popup_.frame = NSMakeRect(width - 126.0, height - 46.0, 102.0, 30.0);
+    source_title_.frame = NSMakeRect(side_x, height - 156.0, side_w, 20.0);
+    file_field_.frame = NSMakeRect(side_x, height - 186.0, side_w - 64.0, 28.0);
+    browse_button_.frame = NSMakeRect(side_x + side_w - 58.0, height - 186.0, 58.0, 28.0);
+    hw_title_.frame = NSMakeRect(side_x, height - 234.0, side_w, 20.0);
+    hw_popup_.frame = NSMakeRect(side_x, height - 266.0, side_w, 30.0);
+    grid_title_.frame = NSMakeRect(side_x, height - 314.0, side_w, 20.0);
+    grid_popup_.frame = NSMakeRect(side_x, height - 346.0, side_w, 30.0);
+    analyze_button_.frame = NSMakeRect(side_x, height - 406.0, side_w, 34.0);
+    status_label_.frame = NSMakeRect(side_x, height - 454.0, side_w, 66.0);
 
     const CGFloat summary_h = 80.0;
     const CGFloat summary_y = height - 144.0;

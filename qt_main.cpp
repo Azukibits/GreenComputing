@@ -5,6 +5,7 @@
 #include <QtWidgets/QGridLayout>
 #include <QtWidgets/QGroupBox>
 #include <QtWidgets/QHeaderView>
+#include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMainWindow>
@@ -80,9 +81,22 @@ public:
         root->setContentsMargins(18, 18, 18, 18);
         root->setSpacing(14);
 
+        auto* header = new QHBoxLayout;
         title_ = new QLabel("GreenComputing");
         title_->setObjectName("Title");
-        root->addWidget(title_);
+        language_label_ = new QLabel;
+        language_combo_ = new QComboBox;
+        language_combo_->addItem("中文");
+        language_combo_->addItem("English");
+        connect(language_combo_, &QComboBox::currentIndexChanged, this, [this](int index) {
+            english_ = (index == 1);
+            retranslate();
+        });
+        header->addWidget(title_);
+        header->addStretch(1);
+        header->addWidget(language_label_);
+        header->addWidget(language_combo_);
+        root->addLayout(header);
 
         auto* splitter = new QSplitter(Qt::Horizontal);
         root->addWidget(splitter, 1);
@@ -100,14 +114,6 @@ public:
                 file_edit_->setText(path);
         });
 
-        language_combo_ = new QComboBox;
-        language_combo_->addItem("中文");
-        language_combo_->addItem("English");
-        connect(language_combo_, &QComboBox::currentIndexChanged, this, [this](int index) {
-            english_ = (index == 1);
-            retranslate();
-        });
-
         hw_combo_ = new QComboBox;
         hw_combo_->setCurrentIndex(2);
 
@@ -122,11 +128,9 @@ public:
         status_->setWordWrap(true);
 
         auto* form = new QFormLayout;
-        language_label_ = new QLabel;
         source_label_ = new QLabel;
         hw_label_ = new QLabel;
         grid_label_ = new QLabel;
-        form->addRow(language_label_, language_combo_);
         form->addRow(source_label_, file_edit_);
         form->addRow("", browse_button_);
         form->addRow(hw_label_, hw_combo_);
