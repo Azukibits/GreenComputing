@@ -18,7 +18,7 @@ can run the same analysis in scripts, CI, or directly against project folders.
 
 [![release](https://github.com/Azukibits/GreenComputing/actions/workflows/release.yml/badge.svg)](https://github.com/Azukibits/GreenComputing/actions/workflows/release.yml)
 
-![GreenComputing screenshot](img1.png)
+![GreenComputing screenshot](img_EN.png)
 
 Analyze one file or a whole mixed-language project, then inspect hotspots in
 the same window with hardware and grid-region presets:
