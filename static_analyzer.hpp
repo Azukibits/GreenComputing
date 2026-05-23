@@ -25,6 +25,7 @@ static const std::vector<std::string> PAT_MEMORY = {
     "new Array", "new Map", "new Set", "Array(", "Object.assign(",
     "Buffer.", "make([]", "make(map", "make(chan", "append(", "copy(",
     "bytes.Buffer", ".push(", "Vec<", "Vec::new", "HashMap::new", "Box::new",
+    ".append(", "list(", "dict(", "set(", "bytearray(", "collections.deque",
 };
 
 static const std::vector<std::string> PAT_FPU = {
@@ -33,6 +34,7 @@ static const std::vector<std::string> PAT_FPU = {
     "std::sqrt", "std::pow", "std::sin", "std::cos", "std::exp", "std::log",
     "Math.sqrt", "Math.pow", "Math.sin", "Math.cos", "Math.exp", "Math.log",
     "math.Sqrt", "math.Pow", "math.Sin", "math.Cos", "math.Exp", "math.Log",
+    "math.sqrt", "math.pow", "math.sin", "math.cos", "math.exp", "math.log",
     "float ", "double ", "long double",
     "float32", "float64", "f32", "f64",
     ".0f", ".0,", ".0)", ".0;",
@@ -52,6 +54,7 @@ static const std::vector<std::string> PAT_IO = {
     "fetch(", "XMLHttpRequest", "fs.", "process.stdout", "process.stderr",
     "fmt.Print", "fmt.Scan", "bufio.", "os.Open(", "os.Create(", "io.Copy(",
     "net.Dial(", "http.Get(", "http.Post(", "println(", "print(",
+    "sys.stdout", "sys.stderr", "logging.", "echo ", "var_dump(", "file_get_contents(",
 };
 
 static const std::vector<std::string> PAT_SIMD = {
@@ -70,6 +73,7 @@ static const std::vector<std::string> PAT_ATOMIC = {
     "ConcurrentHashMap", "Promise.all", "Worker(", "SharedArrayBuffer",
     "Atomics.", "sync.Mutex", "sync.RWMutex", "sync.WaitGroup", "sync.Once",
     "std::sync", "Mutex<", "RwLock<", "Arc<",
+    "threading.Lock", "threading.RLock", "asyncio.Lock", "DispatchQueue",
 };
 
 // 静态分析器，使用纯文本模式匹配
@@ -84,6 +88,10 @@ public:
         Go,
         CSharp,
         Rust,
+        Python,
+        PHP,
+        Kotlin,
+        Swift,
         Unknown,
     };
 
@@ -137,6 +145,10 @@ public:
         if (ext == ".go") return SourceLanguage::Go;
         if (ext == ".cs") return SourceLanguage::CSharp;
         if (ext == ".rs") return SourceLanguage::Rust;
+        if (ext == ".py") return SourceLanguage::Python;
+        if (ext == ".php" || ext == ".phtml") return SourceLanguage::PHP;
+        if (ext == ".kt" || ext == ".kts") return SourceLanguage::Kotlin;
+        if (ext == ".swift") return SourceLanguage::Swift;
         return SourceLanguage::Unknown;
     }
 
@@ -150,6 +162,10 @@ public:
             case SourceLanguage::Go: return "Go";
             case SourceLanguage::CSharp: return "C#";
             case SourceLanguage::Rust: return "Rust";
+            case SourceLanguage::Python: return "Python";
+            case SourceLanguage::PHP: return "PHP";
+            case SourceLanguage::Kotlin: return "Kotlin";
+            case SourceLanguage::Swift: return "Swift";
             case SourceLanguage::Unknown: return "Unknown";
         }
         return "Unknown";
@@ -291,6 +307,9 @@ private:
             }
             if (!in_str && i+1 < s.size() && s[i] == '/' && s[i+1] == '/')
                 return s.substr(0, i);
+            if (!in_str && s[i] == '#' &&
+                (i == 0 || std::isspace((unsigned char)s[i - 1])))
+                return s.substr(0, i);
         }
         return s;
     }
@@ -394,7 +413,42 @@ private:
                language == SourceLanguage::Cpp ||
                language == SourceLanguage::Java ||
                language == SourceLanguage::CSharp ||
+               language == SourceLanguage::Kotlin ||
+               language == SourceLanguage::Swift ||
+               language == SourceLanguage::PHP ||
                language == SourceLanguage::Unknown;
+    }
+
+    static int leading_indent_width(const std::string& line) {
+        int width = 0;
+        for (char c : line) {
+            if (c == ' ')
+                ++width;
+            else if (c == '\t')
+                width += 4;
+            else
+                break;
+        }
+        return width;
+    }
+
+    static bool is_indent_blank(const std::string& line) {
+        return trim(strip_line_comment(line)).empty();
+    }
+
+    static std::string parse_python_name(const std::string& raw) {
+        std::string s = trim(strip_line_comment(raw));
+        if (starts_with(s, "async def "))
+            s = trim(s.substr(6));
+        if (!starts_with(s, "def "))
+            return "";
+
+        size_t pos = 4;
+        while (pos < s.size() && std::isspace((unsigned char)s[pos])) ++pos;
+        size_t end = pos;
+        while (end < s.size() && is_identifier_char(s[end])) ++end;
+        std::string name = s.substr(pos, end - pos);
+        return is_valid_name(name) ? name : "";
     }
 
     static std::string parse_name_before_paren(const std::string& head) {
@@ -566,9 +620,71 @@ private:
         return false;
     }
 
+    static void analyze_body_python(const std::vector<std::string>& lines,
+                                    int start, int end, FunctionProfile& fp) {
+        std::vector<int> loop_indents;
+        int max_loop_depth = 0;
+        int loop_count = 0;
+
+        for (int i = start; i <= end && i < (int)lines.size(); ++i) {
+            std::string raw = lines[i];
+            std::string s = strip_line_comment(raw);
+            std::string t = trim(s);
+            if (t.empty())
+                continue;
+
+            int indent = leading_indent_width(raw);
+            while (!loop_indents.empty() && indent <= loop_indents.back())
+                loop_indents.pop_back();
+
+            bool is_loop = contains_word(t, "for") || contains_word(t, "while");
+            if (is_loop) {
+                ++loop_count;
+                loop_indents.push_back(indent);
+                max_loop_depth = std::max(max_loop_depth, (int)loop_indents.size());
+            }
+
+            if (i > start && !fp.name.empty() &&
+                s.find(fp.name + "(") != std::string::npos)
+                fp.loops.has_recursion = true;
+
+            fp.raw.memory += count_any(s, PAT_MEMORY);
+            fp.raw.fpu    += count_any(s, PAT_FPU);
+            fp.raw.io     += count_any(s, PAT_IO);
+            fp.raw.simd   += count_any(s, PAT_SIMD);
+            fp.raw.atomic += count_any(s, PAT_ATOMIC);
+
+            if (contains_word(t, "if") ||
+                contains_word(t, "elif") ||
+                contains_word(t, "except") ||
+                contains_word(t, "match") ||
+                contains_word(t, "case") ||
+                s.find(" if ") != std::string::npos)
+                ++fp.raw.branch;
+
+            for (char c : s)
+                if (c=='+' || c=='-' || c=='*' || c=='/' || c=='%' ||
+                    c=='&' || c=='|' || c=='^' || c=='~')
+                    ++fp.raw.alu;
+        }
+
+        fp.loops.depth = max_loop_depth;
+        fp.loops.count = loop_count;
+
+        int iters = 1;
+        for (int d = 0; d < max_loop_depth; ++d) iters *= 100;
+        fp.loops.estimated_iters = iters;
+    }
+
     // 分析函数体
     static void analyze_body(const std::vector<std::string>& lines,
-                              int start, int end, FunctionProfile& fp) {
+                              int start, int end, FunctionProfile& fp,
+                              SourceLanguage language) {
+        if (language == SourceLanguage::Python) {
+            analyze_body_python(lines, start, end, fp);
+            return;
+        }
+
         int loop_depth = 0, max_loop_depth = 0, loop_count = 0;
 
         for (int i = start; i <= end && i < (int)lines.size(); ++i) {
@@ -625,6 +741,83 @@ private:
         fp.loops.estimated_iters = iters;
     }
 
+    static std::vector<FunctionProfile> extract_python_functions(
+            const std::vector<std::string>& lines,
+            const std::string& filepath,
+            const std::string& display_path) {
+
+        std::vector<FunctionProfile> profiles;
+        int n = (int)lines.size();
+
+        for (int i = 0; i < n; ++i) {
+            const std::string current = trim(strip_line_comment(lines[i]));
+            if (current.empty() || current[0] == '@')
+                continue;
+
+            std::string name = parse_python_name(lines[i]);
+            if (name.empty())
+                continue;
+
+            int sig_indent = leading_indent_width(lines[i]);
+            bool inline_suite = false;
+            size_t colon = current.find(':');
+            if (colon != std::string::npos &&
+                trim(current.substr(colon + 1)).size() > 0)
+                inline_suite = true;
+
+            int body_start = i;
+            int j = i + 1;
+            if (!inline_suite) {
+                body_start = i + 1;
+                while (body_start < n && is_indent_blank(lines[body_start]))
+                    ++body_start;
+                if (body_start >= n || leading_indent_width(lines[body_start]) <= sig_indent) {
+                    body_start = i;
+                    j = i + 1;
+                } else {
+                    j = body_start;
+                    while (j < n) {
+                        if (is_indent_blank(lines[j])) {
+                            ++j;
+                            continue;
+                        }
+                        if (leading_indent_width(lines[j]) <= sig_indent)
+                            break;
+                        ++j;
+                    }
+                }
+            }
+
+            int line_start = i + 1;
+            int decorator = i - 1;
+            while (decorator >= 0) {
+                std::string deco = trim(strip_line_comment(lines[decorator]));
+                if (deco.empty()) {
+                    --decorator;
+                    continue;
+                }
+                if (deco[0] != '@' || leading_indent_width(lines[decorator]) != sig_indent)
+                    break;
+                line_start = decorator + 1;
+                --decorator;
+            }
+
+            FunctionProfile fp;
+            fp.name        = name;
+            fp.file        = display_path;
+            fp.source_path = filepath;
+            fp.language    = language_display_name(SourceLanguage::Python);
+            fp.line_start  = line_start;
+            fp.line_end    = j;
+
+            analyze_body(lines, body_start, std::max(body_start, j - 1), fp,
+                         SourceLanguage::Python);
+            profiles.push_back(fp);
+        }
+
+        return profiles;
+    }
+
     // 提取所有函数
     static std::vector<FunctionProfile> extract_functions(
             const std::vector<std::string>& lines,
@@ -632,11 +825,22 @@ private:
             const std::string& display_path,
             SourceLanguage language) {
 
+        if (language == SourceLanguage::Python)
+            return extract_python_functions(lines, filepath, display_path);
+
         std::vector<FunctionProfile> profiles;
         int n = (int)lines.size();
         int i = 0;
 
         while (i < n) {
+            if (language == SourceLanguage::PHP) {
+                std::string part = trim(strip_line_comment(lines[i]));
+                if (part == "<?php" || part == "?>") {
+                    ++i;
+                    continue;
+                }
+            }
+
             std::string name;
             int body_start = i;
             detect_function_at(lines, i, language, name, body_start);
@@ -657,7 +861,7 @@ private:
             }
             fp.line_end = j;
 
-            analyze_body(lines, body_start, j - 1, fp);
+            analyze_body(lines, body_start, j - 1, fp, language);
             profiles.push_back(fp);
             i = j;
         }

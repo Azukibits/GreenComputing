@@ -27,6 +27,7 @@ jobs:
           cp -R build/GreenComputing.app package/GreenComputing-macos/
           cp build/GreenComputingCLI package/GreenComputing-macos/
           cp README.md README.zh-CN.md LICENSE demo.cpp img1.png package/GreenComputing-macos/
+          cp -R demos package/GreenComputing-macos/
           hdiutil create -volname GreenComputing -srcfolder package/GreenComputing-macos -ov -format UDZO GreenComputing-macos.dmg
 
       - uses: actions/upload-artifact@v4
@@ -68,6 +69,7 @@ jobs:
           EOF
           chmod +x package/GreenComputing-linux/run-greencomputing.sh
           cp README.md README.zh-CN.md LICENSE demo.cpp img1.png package/GreenComputing-linux/
+          cp -R demos package/GreenComputing-linux/
           tar -czf GreenComputing-linux.tar.gz -C package GreenComputing-linux
 
       - uses: actions/upload-artifact@v4
@@ -102,6 +104,7 @@ jobs:
           Copy-Item build/Release/GreenComputingCLI.exe package/GreenComputing-windows/
           windeployqt package/GreenComputing-windows/GreenComputing.exe
           Copy-Item README.md,README.zh-CN.md,LICENSE,demo.cpp,img1.png package/GreenComputing-windows/
+          Copy-Item demos -Destination package/GreenComputing-windows/ -Recurse
           Compress-Archive -Path package/GreenComputing-windows -DestinationPath GreenComputing-windows.zip -Force
 
       - uses: actions/upload-artifact@v4

@@ -121,7 +121,7 @@ public:
                 this,
                 english_ ? "Select Source File" : "选择源文件",
                 QString(),
-                "Source Files (*.c *.h *.cpp *.cc *.cxx *.hpp *.hh *.hxx *.java *.js *.mjs *.cjs *.jsx *.ts *.tsx *.go *.cs *.rs);;All Files (*)");
+                "Source Files (*.c *.h *.cpp *.cc *.cxx *.hpp *.hh *.hxx *.java *.js *.mjs *.cjs *.jsx *.ts *.tsx *.go *.cs *.rs *.py *.php *.phtml *.kt *.kts *.swift);;All Files (*)");
             if (!path.isEmpty()) {
                 source_path_ = path.toStdString();
                 file_edit_->setText(qs(compact_input_path_label(source_path_)));

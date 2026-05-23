@@ -25,7 +25,8 @@ static void print_usage(const char* argv0) {
         "电网区域:\n"
         "  cn, us, us_ca, us_tx, eu, de, fr, no, uk, jp, au, br, in, global\n\n"
         "支持语言:\n"
-        "  C, C++, Java, JavaScript/TypeScript, Go, C#, Rust\n";
+        "  C, C++, Java, JavaScript/TypeScript, Go, C#, Rust,\n"
+        "  Python, PHP, Kotlin, Swift\n";
 }
 
 static void list_hw() {

@@ -1155,7 +1155,7 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     panel.allowedFileTypes = @[
         @"c", @"h", @"cpp", @"cc", @"cxx", @"hpp", @"hh", @"hxx",
         @"java", @"js", @"mjs", @"cjs", @"jsx", @"ts", @"tsx",
-        @"go", @"cs", @"rs"
+        @"go", @"cs", @"rs", @"py", @"php", @"phtml", @"kt", @"kts", @"swift"
     ];
 #pragma clang diagnostic pop
     if ([panel runModal] == NSModalResponseOK) {

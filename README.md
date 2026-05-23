@@ -29,7 +29,8 @@ the same window with hardware and grid-region presets:
 - Analyze a single source file or a whole project folder
 - Native macOS GUI plus Qt GUI on Windows / Linux
 - Command-line interface for local scripts and CI
-- Source detection for C, C++, Java, JavaScript, TypeScript, Go, C#, and Rust
+- Source detection for C, C++, Java, JavaScript, TypeScript, Go, C#, Rust,
+  Python, PHP, Kotlin, and Swift
 - Per-function hotspot ranking, carbon chart, and instruction breakdowns
 - Hardware profile presets from edge devices to workstations and servers
 - Grid-region presets for carbon-intensity comparison
@@ -73,7 +74,8 @@ GreenComputing-macos/
 ├── GreenComputingCLI
 ├── README.md
 ├── README.zh-CN.md
-└── demo.cpp
+├── demo.cpp
+└── demos/
 ```
 
 To remove the quarantine attribute from the extracted folder, run:
@@ -106,7 +108,8 @@ GreenComputing-windows/
 ├── GreenComputingCLI.exe
 ├── README.md
 ├── README.zh-CN.md
-└── demo.cpp
+├── demo.cpp
+└── demos/
 ```
 
 To unblock the executables, run:
@@ -164,6 +167,16 @@ You can also analyze a whole project folder:
 ./build/GreenComputingCLI /path/to/project --hw laptop_mid --grid global
 ```
 
+The repository also includes a mixed-language test folder:
+
+```sh
+./build/GreenComputingCLI demos --no-color
+```
+
+`demos/` currently includes sample files for C++, Python, PHP, Kotlin, Swift,
+Java, JavaScript, TypeScript, Go, C#, and Rust so you can quickly regression
+test project-folder analysis.
+
 Selected CLI behavior:
 
 | Item | Purpose |
@@ -183,7 +196,7 @@ What works today (`v0.3.0`):
 - [x] Command-line interface
 - [x] Source file and project-folder analysis
 - [x] Multi-language function extraction: C, C++, Java, JavaScript, TypeScript,
-      Go, C#, Rust
+      Go, C#, Rust, Python, PHP, Kotlin, Swift
 - [x] Function hotspot ranking, chart selection, and detailed instruction
       breakdowns
 - [x] Mixed-language project summaries
