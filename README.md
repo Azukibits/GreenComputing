@@ -1,106 +1,203 @@
 # GreenComputing
 
-[中文文档](README.zh-CN.md)
+**English** · [中文](README.zh-CN.md)
+
+> Estimate per-function energy use and carbon hotspots from a source file or an
+> entire project folder, without leaving a desktop GUI or terminal workflow.
+
+GreenComputing is a C++ static analysis tool with a native macOS app, a Qt GUI
+for Windows / Linux, and a command-line interface. It scans source code,
+detects functions across multiple languages, estimates instruction-category
+activity, applies a hardware power model, and reports relative carbon hotspots
+for optimization work.
+
+Please always use the latest version. More features will be added.
+
+The `GreenComputingCLI` binary is also a regular standalone entry point, so you
+can run the same analysis in scripts, CI, or directly against project folders.
+
+[![release](https://github.com/Azukibits/GreenComputing/actions/workflows/release.yml/badge.svg)](https://github.com/Azukibits/GreenComputing/actions/workflows/release.yml)
 
 ![GreenComputing screenshot](img1.png)
 
-GreenComputing is a C++ static analysis tool for estimating function-level energy usage and carbon emissions. It includes a graphical interface on macOS, Windows, and Linux, plus a command-line interface.
-
-The analyzer reads C++ source files, identifies functions, estimates instruction-category activity, applies a hardware power model, and reports relative carbon hotspots across the program.
+Analyze one file or a whole mixed-language project, then inspect hotspots in
+the same window with hardware and grid-region presets:
 
 ## Features
 
 - Function-level energy and carbon estimation
-- Desktop interface on macOS, Windows, and Linux
-- Chinese and English graphical interface
-- Command-line interface for quick analysis
-- Carbon hotspot ranking
-- Function comparison chart
-- Instruction-category breakdowns
-- Hardware profile and grid-region selection
-- Call relationship summary for detected functions
+- Analyze a single source file or a whole project folder
+- Native macOS GUI plus Qt GUI on Windows / Linux
+- Command-line interface for local scripts and CI
+- Source detection for C, C++, Java, JavaScript, TypeScript, Go, C#, and Rust
+- Per-function hotspot ranking, carbon chart, and instruction breakdowns
+- Hardware profile presets from edge devices to workstations and servers
+- Grid-region presets for carbon-intensity comparison
+- Bilingual desktop interface: English and Chinese
 
 ## Requirements
 
-- CMake 3.20 or later
-- C++20 compiler
-- Apple Command Line Tools or Xcode
-- Qt 6 for Windows/Linux GUI builds
+- One of:
+  - **macOS** with Apple Command Line Tools or Xcode
+  - **Windows** with a C++20 compiler and **Qt 6** for GUI builds
+  - **Linux** with a C++20 compiler and **Qt 6** for GUI builds
+- **CMake 3.20+**
 
-## Build
+## Quick install (recommended)
 
-```bash
-cmake -S . -B cmake-build-debug
-cmake --build cmake-build-debug --target GreenComputing GreenComputingCLI
-```
+1. From the [Releases page](https://github.com/Azukibits/GreenComputing/releases),
+   download the package for your platform:
+   - macOS: `GreenComputing-macos.dmg`
+   - Linux: `GreenComputing-linux.tar.gz`
+   - Windows: `GreenComputing-windows.zip`
+2. Extract or open the package.
+3. Launch the GUI for your platform:
+   - macOS: open `GreenComputing.app`
+   - Linux: run `run-greencomputing.sh`
+   - Windows: run `GreenComputing.exe`
+4. Select either a source file or a project folder, choose a hardware profile
+   and grid region, then run analysis.
 
-## Run
+## Troubleshooting
 
-Graphical interface on macOS:
+### macOS blocks the app or CLI after downloading
 
-```bash
-open ./cmake-build-debug/GreenComputing.app
-```
+If you installed GreenComputing from a downloaded package, macOS Gatekeeper may
+mark the app bundle or CLI binary as quarantined.
 
-Graphical interface on Windows/Linux:
-
-```bash
-./build/GreenComputing
-```
-
-Command-line interface:
-
-```bash
-./cmake-build-debug/GreenComputingCLI demo.cpp --no-color
-```
-
-You can also analyze another source file:
-
-```bash
-./cmake-build-debug/GreenComputingCLI path/to/source.cpp --hw laptop_mid --grid global
-```
-
-## Project Structure
+The extracted package should look like this:
 
 ```text
-CMakeLists.txt          Build configuration
-main.cpp                Command-line entry point
-gui_main.mm             macOS Cocoa interface
-qt_main.cpp             Windows/Linux Qt interface
-static_analyzer.hpp     Source parser and function analyzer
-energy_estimator.hpp    Energy and carbon estimation model
-carbon_model.hpp        Hardware and grid-region data
-function_profile.hpp    Shared analysis data structures
-report_generator.hpp    CLI report formatting
-demo.cpp                Example source file
+GreenComputing-macos/
+├── GreenComputing.app
+├── GreenComputingCLI
+├── README.md
+├── README.zh-CN.md
+└── demo.cpp
 ```
 
-## Release Packages
+To remove the quarantine attribute from the extracted folder, run:
 
-- `GreenComputing-macos.dmg`: macOS GUI app and CLI
-- `GreenComputing-windows.zip`: Windows GUI app and CLI
-- `GreenComputing-linux.tar.gz`: Linux GUI app and CLI
+```sh
+xattr -dr com.apple.quarantine /path/to/GreenComputing-macos
+```
 
-## Estimation Model
+If you still have the original `.dmg`, you can also remove the quarantine
+attribute before opening it:
 
-GreenComputing uses a lightweight static model. It detects common source-code patterns and groups them into instruction categories such as:
+```sh
+xattr -d com.apple.quarantine ~/Downloads/GreenComputing-macos.dmg
+```
 
-- integer arithmetic
-- floating-point operations
-- memory and container operations
-- branches
-- I/O
-- SIMD usage
-- synchronization primitives
+> Only remove the quarantine attribute from files downloaded from a trusted
+> source, such as this repository's official Releases page, or files you built
+> yourself from source.
 
-The estimated instruction activity is scaled by loop depth and mapped to energy usage using the selected hardware profile. Carbon emissions are then estimated from the selected grid carbon intensity.
+### Windows blocks the downloaded executables
 
-## Limitations
+If you installed GreenComputing from a downloaded `.zip`, Windows may mark the
+included `.exe` files as downloaded from the Internet.
 
-This project provides an approximate static estimate rather than a hardware measurement. Results should be interpreted as relative hotspot guidance, not as exact runtime energy data.
+The extracted package should look like this:
 
-For precise measurement, use platform counters or profiling tools such as RAPL, `perf`, Instruments, or vendor-specific power telemetry.
+```text
+GreenComputing-windows/
+├── GreenComputing.exe
+├── GreenComputingCLI.exe
+├── README.md
+├── README.zh-CN.md
+└── demo.cpp
+```
+
+To unblock the executables, run:
+
+```powershell
+Unblock-File -Path "C:\path\to\GreenComputing-windows\*.exe"
+```
+
+Or unblock the whole extracted folder:
+
+```powershell
+Get-ChildItem "C:\path\to\GreenComputing-windows" -Recurse | Unblock-File
+```
+
+> Only unblock files downloaded from a trusted source, such as this
+> repository's official Releases page, or files you built yourself from source.
+
+## Build from source
+
+For developers who want to hack on the analyzer, extend the language support,
+or build unreleased changes.
+
+Prerequisites:
+
+- A **C++20** compiler
+- **CMake 3.20+**
+- **macOS**: Apple Command Line Tools or Xcode
+- **Windows / Linux GUI builds**: **Qt 6 Widgets**
+
+```sh
+git clone https://github.com/Azukibits/GreenComputing.git
+cd GreenComputing
+
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release --target GreenComputing GreenComputingCLI
+```
+
+Generated outputs:
+
+- macOS GUI app: `build/GreenComputing.app`
+- Windows / Linux GUI app: `build/GreenComputing` or `build/Release/GreenComputing.exe`
+- CLI: `build/GreenComputingCLI` or `build/Release/GreenComputingCLI.exe`
+
+## Use from CLI
+
+You can analyze a single file:
+
+```sh
+./build/GreenComputingCLI demo.cpp --no-color
+```
+
+You can also analyze a whole project folder:
+
+```sh
+./build/GreenComputingCLI /path/to/project --hw laptop_mid --grid global
+```
+
+Selected CLI behavior:
+
+| Item | Purpose |
+|------|---------|
+| `<source-file-or-dir>` | Analyze one source file or recurse through a project folder |
+| `--hw <key>` | Select a hardware profile preset |
+| `--grid <key>` | Select a grid-region carbon-intensity preset |
+| `--list-hw` | Print all hardware profile keys |
+| `--list-grids` | Print all grid-region keys |
+| `--no-color` | Disable ANSI colors in the terminal report |
+
+## Status / roadmap
+
+What works today (`v0.3.0`):
+
+- [x] macOS native GUI and Windows / Linux Qt GUI
+- [x] Command-line interface
+- [x] Source file and project-folder analysis
+- [x] Multi-language function extraction: C, C++, Java, JavaScript, TypeScript,
+      Go, C#, Rust
+- [x] Function hotspot ranking, chart selection, and detailed instruction
+      breakdowns
+- [x] Mixed-language project summaries
+- [x] Hardware profiles from Raspberry Pi to workstation and server classes
+- [x] Grid-region presets for carbon comparison
+- [x] GitHub Actions packaging for macOS, Linux, and Windows
+
+Planned next:
+
+- [ ] Improve parser accuracy for more real-world syntax patterns
+- [ ] Add richer function and file-level summaries
+- [ ] Add exportable machine-readable reports
+- [ ] Add more hardware and regional carbon datasets
 
 ## License
 
-See [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).

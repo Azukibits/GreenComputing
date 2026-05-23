@@ -1,5 +1,6 @@
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QComboBox>
+#include <QtCore/QCoreApplication>
 #include <QtWidgets/QFileDialog>
 #include <QtWidgets/QFormLayout>
 #include <QtWidgets/QGridLayout>
@@ -26,6 +27,7 @@
 #include "carbon_model.hpp"
 #include "energy_estimator.hpp"
 #include "function_profile.hpp"
+#include "path_utils.hpp"
 #include "static_analyzer.hpp"
 
 static QString qs(const std::string& text) {
@@ -60,13 +62,17 @@ static std::string fmt_energy(double j) {
     return ss.str();
 }
 
+static std::vector<std::filesystem::path> app_search_hints() {
+    return {
+        std::filesystem::current_path(),
+        std::filesystem::path(QCoreApplication::applicationDirPath().toStdString())
+    };
+}
+
 class MainWindow : public QMainWindow {
 public:
     MainWindow() {
-        hw_keys_ = {
-            "rpi4", "laptop_low", "laptop_mid", "desktop_mid",
-            "desktop_high", "server_1u", "server_hpc"
-        };
+        hw_keys_ = HARDWARE_PROFILE_KEYS;
         grid_keys_ = {
             "cn", "us", "us_ca", "us_tx", "eu", "de", "fr",
             "no", "uk", "jp", "au", "br", "in", "global"
@@ -105,17 +111,34 @@ public:
         auto* config = new QVBoxLayout(config_box_);
         config->setSpacing(12);
 
-        file_edit_ = new QLineEdit("demo.cpp");
+        std::string demo_path = find_demo_path(app_search_hints());
+        source_path_ = demo_path.empty() ? "demo.cpp" : demo_path;
+        file_edit_ = new QLineEdit(qs(compact_input_path_label(source_path_)));
         browse_button_ = new QPushButton;
+        browse_dir_button_ = new QPushButton;
         connect(browse_button_, &QPushButton::clicked, this, [this]() {
-            QString path = QFileDialog::getOpenFileName(this, english_ ? "Select C++ Source File" : "选择 C++ 源文件", QString(),
-                                                        "C++ Source (*.cpp *.cc *.cxx *.hpp *.h);;All Files (*)");
-            if (!path.isEmpty())
-                file_edit_->setText(path);
+            QString path = QFileDialog::getOpenFileName(
+                this,
+                english_ ? "Select Source File" : "选择源文件",
+                QString(),
+                "Source Files (*.c *.h *.cpp *.cc *.cxx *.hpp *.hh *.hxx *.java *.js *.mjs *.cjs *.jsx *.ts *.tsx *.go *.cs *.rs);;All Files (*)");
+            if (!path.isEmpty()) {
+                source_path_ = path.toStdString();
+                file_edit_->setText(qs(compact_input_path_label(source_path_)));
+            }
+        });
+        connect(browse_dir_button_, &QPushButton::clicked, this, [this]() {
+            QString path = QFileDialog::getExistingDirectory(
+                this,
+                english_ ? "Select Project Folder" : "选择项目文件夹");
+            if (!path.isEmpty()) {
+                source_path_ = path.toStdString();
+                file_edit_->setText(qs(compact_input_path_label(source_path_)));
+            }
         });
 
         hw_combo_ = new QComboBox;
-        hw_combo_->setCurrentIndex(2);
+        hw_combo_->setCurrentIndex(7);
 
         grid_combo_ = new QComboBox;
         grid_combo_->setCurrentIndex(13);
@@ -131,8 +154,13 @@ public:
         source_label_ = new QLabel;
         hw_label_ = new QLabel;
         grid_label_ = new QLabel;
+        auto* browse_row_widget = new QWidget;
+        auto* browse_row = new QHBoxLayout(browse_row_widget);
+        browse_row->setContentsMargins(0, 0, 0, 0);
+        browse_row->addWidget(browse_button_);
+        browse_row->addWidget(browse_dir_button_);
         form->addRow(source_label_, file_edit_);
-        form->addRow("", browse_button_);
+        form->addRow("", browse_row_widget);
         form->addRow(hw_label_, hw_combo_);
         form->addRow(grid_label_, grid_combo_);
         config->addLayout(form);
@@ -230,7 +258,7 @@ public:
             QTableWidget::item:selected { background: #1f6feb; }
         )");
         retranslate();
-        hw_combo_->setCurrentIndex(2);
+        hw_combo_->setCurrentIndex(7);
         grid_combo_->setCurrentIndex(13);
     }
 
@@ -243,11 +271,22 @@ private:
         if (!english_)
             return qs(HARDWARE_PROFILES.at(key).name);
         if (key == "rpi4") return "Raspberry Pi 4";
+        if (key == "rpi5") return "Raspberry Pi 5";
+        if (key == "jetson_nano") return "Jetson Nano";
+        if (key == "jetson_orin") return "Jetson Orin Nano";
+        if (key == "mini_pc_n100") return "Mini PC (Intel N100)";
         if (key == "laptop_low") return "Laptop Low Power (~15W TDP)";
+        if (key == "macbook_air_m2") return "MacBook Air (M2)";
         if (key == "laptop_mid") return "Laptop Mid Range (~28W TDP)";
+        if (key == "macbook_pro_m3") return "MacBook Pro (M3)";
+        if (key == "laptop_high") return "Laptop High Performance (~45W TDP)";
+        if (key == "desktop_entry") return "Desktop Entry (~35W TDP)";
         if (key == "desktop_mid") return "Desktop Mid Range (~65W TDP)";
         if (key == "desktop_high") return "Desktop High End (~125W TDP)";
+        if (key == "workstation_pro") return "Workstation Pro (~220W TDP)";
         if (key == "server_1u") return "Server 1U";
+        if (key == "server_dual") return "Server Dual Socket";
+        if (key == "server_arm") return "Server ARM Node";
         if (key == "server_hpc") return "Server HPC Node";
         return qs(key);
     }
@@ -303,10 +342,11 @@ private:
         config_box_->setTitle(trText("分析配置", "Analysis Configuration"));
         summary_box_->setTitle(trText("总体结果", "Summary"));
         language_label_->setText(trText("语言", "Language"));
-        source_label_->setText(trText("源文件", "Source File"));
+        source_label_->setText(trText("源路径", "Source Path"));
         hw_label_->setText(trText("硬件配置", "Hardware Profile"));
         grid_label_->setText(trText("电网区域", "Grid Region"));
-        browse_button_->setText(trText("选择源文件", "Choose Source File"));
+        browse_button_->setText(trText("选择文件", "Choose File"));
+        browse_dir_button_->setText(trText("选择目录", "Choose Folder"));
         run_button_->setText(trText("开始分析", "Run Analysis"));
         co2_title_->setText(trText("总碳排放", "Total Carbon"));
         energy_title_->setText(trText("总能耗", "Total Energy"));
@@ -325,8 +365,15 @@ private:
             status_->setText(trText("等待分析", "Waiting for analysis"));
         else if (status_->text() == "等待分析" || status_->text() == "Waiting for analysis")
             status_->setText(trText("等待分析", "Waiting for analysis"));
-        else if (status_->text() == "分析完成" || status_->text() == "Analysis complete")
-            status_->setText(trText("分析完成", "Analysis complete"));
+        else if (!program_.functions.empty()) {
+            std::ostringstream status;
+            status << (english_ ? "Analysis complete" : "分析完成");
+            status << " · " << program_.analyzed_files
+                   << (english_ ? " files" : " 个文件");
+            status << " · " << program_.functions.size()
+                   << (english_ ? " functions" : " 个函数");
+            status_->setText(qs(status.str()));
+        }
         if (!program_.functions.empty()) {
             fillTable();
             showDetail(table_->currentRow());
@@ -334,18 +381,18 @@ private:
     }
 
     void runAnalysis() {
-        std::string path = file_edit_->text().toStdString();
+        std::string path = source_path_;
         if (path.empty())
-            path = "demo.cpp";
-        if (!std::filesystem::exists(path)) {
-            std::string parent = "../" + path;
-            if (std::filesystem::exists(parent))
-                path = parent;
-        }
-        if (!std::filesystem::exists(path)) {
-            setError((english_ ? "Source file not found: " : "找不到源文件: ") + path);
+            path = find_demo_path(app_search_hints());
+        std::string resolved = resolve_existing_path(path, app_search_hints());
+        if (!resolved.empty())
+            path = resolved;
+        if (path.empty() || !std::filesystem::exists(path)) {
+            setError((english_ ? "Source path not found: " : "找不到源路径: ") + path);
             return;
         }
+        source_path_ = path;
+        file_edit_->setText(qs(compact_input_path_label(source_path_)));
 
         const int hw_index = hw_combo_->currentIndex();
         const int grid_index = grid_combo_->currentIndex();
@@ -366,16 +413,25 @@ private:
 
         try {
             StaticAnalyzer analyzer;
-            auto functions = analyzer.analyze(path);
+            auto functions = analyzer.analyze_path(path);
             if (functions.empty()) {
                 setError(english_ ? "No function definitions were detected" : "没有识别到函数定义");
                 return;
             }
 
+            const bool is_directory = std::filesystem::is_directory(std::filesystem::path(path));
             program_ = ProgramProfile{};
             program_.source_file = path;
+            program_.language = is_directory
+                ? StaticAnalyzer::summarize_languages(functions)
+                : StaticAnalyzer::language_display_name(
+                    StaticAnalyzer::detect_language(path));
             program_.hardware_key = hw_key;
             program_.grid_key = grid_key;
+            program_.analyzed_files = is_directory
+                ? StaticAnalyzer::collect_supported_files(path).size()
+                : 1;
+            program_.source_is_directory = is_directory;
             program_.functions = std::move(functions);
 
             EnergyEstimator estimator(hw_it->second, grid_it->second);
@@ -385,7 +441,13 @@ private:
             return;
         }
 
-        status_->setText(trText("分析完成", "Analysis complete"));
+        std::ostringstream status;
+        status << (english_ ? "Analysis complete" : "分析完成");
+        status << " · " << program_.analyzed_files
+               << (english_ ? " files" : " 个文件");
+        status << " · " << program_.functions.size()
+               << (english_ ? " functions" : " 个函数");
+        status_->setText(qs(status.str()));
         co2_->setText(qs(fmt_co2(program_.total_co2_mg)));
         energy_->setText(qs(fmt_energy(program_.total_joules)));
         count_->setText(QString::number((int)program_.functions.size()));
@@ -422,6 +484,11 @@ private:
         std::ostringstream out;
         out << fp.name << "\n";
         out << fp.file << ":" << fp.line_start << "-" << fp.line_end << "\n\n";
+        out << (english_ ? "Language: " : "语言: ") << fp.language << "\n";
+        if (!program_.language.empty() && program_.language != fp.language)
+            out << (english_ ? "Project: " : "项目: ") << program_.language << "\n";
+        out << (english_ ? "Files analyzed: " : "分析文件数: ")
+            << program_.analyzed_files << "\n";
         out << (english_ ? "Carbon: " : "碳排放: ") << fmt_co2(fp.estimated_co2_mg) << "\n";
         out << (english_ ? "Energy: " : "能耗: ") << fmt_energy(fp.estimated_joules) << "\n";
         out << (english_ ? "Energy score: " : "能耗评分: ") << std::fixed << std::setprecision(0) << fp.energy_score << "\n";
@@ -475,6 +542,7 @@ private:
     QLabel* grid_label_ = nullptr;
     QComboBox* language_combo_ = nullptr;
     QPushButton* browse_button_ = nullptr;
+    QPushButton* browse_dir_button_ = nullptr;
     QPushButton* run_button_ = nullptr;
     QLineEdit* file_edit_ = nullptr;
     QComboBox* hw_combo_ = nullptr;
@@ -491,6 +559,7 @@ private:
 
     std::vector<std::string> hw_keys_;
     std::vector<std::string> grid_keys_;
+    std::string source_path_;
     ProgramProfile program_;
 };
 

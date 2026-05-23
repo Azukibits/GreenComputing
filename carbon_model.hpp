@@ -14,13 +14,45 @@ struct HardwareProfile {
 };
 
 inline const std::unordered_map<std::string, HardwareProfile> HARDWARE_PROFILES = {
-    {"rpi4",         {"Raspberry Pi 4",               6.4,   2.0,  0.3,  0.5,  0.8}},
-    {"laptop_low",   {"Laptop (低功耗, ~15W TDP)",     15.0,  5.0,  0.8,  1.2,  2.0}},
-    {"laptop_mid",   {"Laptop (中端, ~28W TDP)",       28.0,  8.0,  1.2,  1.8,  3.0}},
-    {"desktop_mid",  {"Desktop (中端, ~65W TDP)",      65.0, 15.0,  2.0,  3.0,  5.0}},
-    {"desktop_high", {"Desktop (高端, ~125W TDP)",    125.0, 25.0,  3.5,  5.0,  8.0}},
-    {"server_1u",    {"Server 1U",                   200.0, 60.0,  5.0,  7.0, 12.0}},
-    {"server_hpc",   {"Server HPC 节点",              400.0,100.0, 10.0, 15.0, 20.0}},
+    {"rpi4",             {"Raspberry Pi 4",                  6.4,   2.0,  0.3,  0.5,  0.8}},
+    {"rpi5",             {"Raspberry Pi 5",                 12.0,   3.5,  0.4,  0.7,  1.0}},
+    {"jetson_nano",      {"Jetson Nano",                    10.0,   4.0,  0.6,  1.0,  1.4}},
+    {"jetson_orin",      {"Jetson Orin Nano",               25.0,   7.0,  1.0,  1.6,  2.2}},
+    {"mini_pc_n100",     {"Mini PC (Intel N100)",           15.0,   6.0,  0.8,  1.2,  1.8}},
+    {"laptop_low",       {"Laptop (低功耗, ~15W TDP)",        15.0,   5.0,  0.8,  1.2,  2.0}},
+    {"macbook_air_m2",   {"MacBook Air (M2)",               20.0,   4.0,  0.9,  1.5,  2.2}},
+    {"laptop_mid",       {"Laptop (中端, ~28W TDP)",          28.0,   8.0,  1.2,  1.8,  3.0}},
+    {"macbook_pro_m3",   {"MacBook Pro (M3)",               35.0,   7.0,  1.4,  2.1,  3.2}},
+    {"laptop_high",      {"Laptop (高性能, ~45W TDP)",        45.0,  10.0,  1.8,  2.6,  4.0}},
+    {"desktop_entry",    {"Desktop (入门, ~35W TDP)",        35.0,  10.0,  1.4,  2.2,  3.5}},
+    {"desktop_mid",      {"Desktop (中端, ~65W TDP)",         65.0,  15.0,  2.0,  3.0,  5.0}},
+    {"desktop_high",     {"Desktop (高端, ~125W TDP)",       125.0,  25.0,  3.5,  5.0,  8.0}},
+    {"workstation_pro",  {"Workstation (专业, ~220W TDP)",   220.0,  50.0,  5.5,  8.5, 12.0}},
+    {"server_1u",        {"Server 1U",                      200.0,  60.0,  5.0,  7.0, 12.0}},
+    {"server_dual",      {"Server Dual Socket",             350.0,  95.0,  8.5, 12.0, 18.0}},
+    {"server_arm",       {"Server ARM Node",                180.0,  45.0,  4.5,  6.0,  9.0}},
+    {"server_hpc",       {"Server HPC 节点",                 400.0, 100.0, 10.0, 15.0, 20.0}},
+};
+
+inline const std::vector<std::string> HARDWARE_PROFILE_KEYS = {
+    "rpi4",
+    "rpi5",
+    "jetson_nano",
+    "jetson_orin",
+    "mini_pc_n100",
+    "laptop_low",
+    "macbook_air_m2",
+    "laptop_mid",
+    "macbook_pro_m3",
+    "laptop_high",
+    "desktop_entry",
+    "desktop_mid",
+    "desktop_high",
+    "workstation_pro",
+    "server_1u",
+    "server_dual",
+    "server_arm",
+    "server_hpc",
 };
 
 // 电网碳强度 (gCO₂eq/kWh)

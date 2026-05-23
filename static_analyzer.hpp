@@ -5,8 +5,11 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
+#include <filesystem>
+#include <map>
 #include <set>
 #include <stdexcept>
+#include <system_error>
 #include <cctype>
 
 // 指令类别匹配模式表
@@ -17,13 +20,21 @@ static const std::vector<std::string> PAT_MEMORY = {
     "std::multimap", "push_back(", "emplace_back(", "insert(", "resize(",
     "reserve(", "std::make_shared", "std::make_unique",
     "memcpy(", "memmove(", "memset(",
+    "ArrayList", "LinkedList", "HashMap", "HashSet", "TreeMap", "TreeSet",
+    "StringBuilder", "ByteBuffer", "List<", "Map<", "Set<",
+    "new Array", "new Map", "new Set", "Array(", "Object.assign(",
+    "Buffer.", "make([]", "make(map", "make(chan", "append(", "copy(",
+    "bytes.Buffer", ".push(", "Vec<", "Vec::new", "HashMap::new", "Box::new",
 };
 
 static const std::vector<std::string> PAT_FPU = {
     "sqrt(", "pow(", "sin(", "cos(", "tan(", "exp(", "log(", "log2(", "log10(",
     "fabs(", "ceil(", "floor(", "round(", "fmod(", "hypot(", "atan2(",
     "std::sqrt", "std::pow", "std::sin", "std::cos", "std::exp", "std::log",
+    "Math.sqrt", "Math.pow", "Math.sin", "Math.cos", "Math.exp", "Math.log",
+    "math.Sqrt", "math.Pow", "math.Sin", "math.Cos", "math.Exp", "math.Log",
     "float ", "double ", "long double",
+    "float32", "float64", "f32", "f64",
     ".0f", ".0,", ".0)", ".0;",
 };
 
@@ -35,6 +46,12 @@ static const std::vector<std::string> PAT_IO = {
     "std::getline", "getchar(", "putchar(", "puts(", "gets(",
     "read(", "write(", "open(", "close(",
     "socket(", "send(", "recv(", "connect(", "accept(", "bind(",
+    "System.out", "System.err", "Scanner(", "BufferedReader", "FileReader",
+    "FileInputStream", "FileOutputStream", "Files.", "InputStream",
+    "OutputStream", "console.log(", "console.error(", "console.warn(",
+    "fetch(", "XMLHttpRequest", "fs.", "process.stdout", "process.stderr",
+    "fmt.Print", "fmt.Scan", "bufio.", "os.Open(", "os.Create(", "io.Copy(",
+    "net.Dial(", "http.Get(", "http.Post(", "println(", "print(",
 };
 
 static const std::vector<std::string> PAT_SIMD = {
@@ -49,12 +66,164 @@ static const std::vector<std::string> PAT_ATOMIC = {
     "std::atomic", "std::condition_variable", "std::barrier", "std::latch",
     "pthread_mutex", "omp_set_lock",
     "__sync_", "__atomic_",
+    "synchronized", "AtomicInteger", "AtomicLong", "ReentrantLock",
+    "ConcurrentHashMap", "Promise.all", "Worker(", "SharedArrayBuffer",
+    "Atomics.", "sync.Mutex", "sync.RWMutex", "sync.WaitGroup", "sync.Once",
+    "std::sync", "Mutex<", "RwLock<", "Arc<",
 };
 
 // 静态分析器，使用纯文本模式匹配
 class StaticAnalyzer {
 public:
+    enum class SourceLanguage {
+        C,
+        Cpp,
+        Java,
+        JavaScript,
+        TypeScript,
+        Go,
+        CSharp,
+        Rust,
+        Unknown,
+    };
+
     std::vector<FunctionProfile> analyze(const std::string& filepath) {
+        auto profiles = analyze_file(filepath, filepath);
+        build_call_graph(profiles);
+        return profiles;
+    }
+
+    std::vector<FunctionProfile> analyze_path(const std::string& path) {
+        namespace fs = std::filesystem;
+
+        std::error_code ec;
+        const fs::path input(path);
+        if (fs::is_regular_file(input, ec)) {
+            if (!is_supported_file(input))
+                throw std::runtime_error("不支持的源文件类型: " + input.string());
+            return analyze(input.string());
+        }
+        if (!fs::is_directory(input, ec))
+            throw std::runtime_error("找不到源文件或目录: " + path);
+
+        const auto files = collect_supported_files(input.string());
+        if (files.empty())
+            throw std::runtime_error("目录中没有可分析的源文件: " + input.string());
+
+        std::vector<FunctionProfile> profiles;
+        for (const auto& file : files) {
+            const std::string display = relative_display_path(fs::path(file), input);
+            auto file_profiles = analyze_file(file, display);
+            profiles.insert(profiles.end(),
+                            std::make_move_iterator(file_profiles.begin()),
+                            std::make_move_iterator(file_profiles.end()));
+        }
+        build_call_graph(profiles);
+        return profiles;
+    }
+
+    static SourceLanguage detect_language(const std::string& filepath) {
+        std::string ext = extension_of(filepath);
+        if (ext == ".c") return SourceLanguage::C;
+        if (ext == ".cc" || ext == ".cpp" || ext == ".cxx" || ext == ".c++" ||
+            ext == ".hpp" || ext == ".hh" || ext == ".hxx" || ext == ".h++" ||
+            ext == ".ipp" || ext == ".tpp" || ext == ".mm")
+            return SourceLanguage::Cpp;
+        if (ext == ".h") return SourceLanguage::Cpp;
+        if (ext == ".java") return SourceLanguage::Java;
+        if (ext == ".js" || ext == ".mjs" || ext == ".cjs" || ext == ".jsx")
+            return SourceLanguage::JavaScript;
+        if (ext == ".ts" || ext == ".tsx") return SourceLanguage::TypeScript;
+        if (ext == ".go") return SourceLanguage::Go;
+        if (ext == ".cs") return SourceLanguage::CSharp;
+        if (ext == ".rs") return SourceLanguage::Rust;
+        return SourceLanguage::Unknown;
+    }
+
+    static std::string language_display_name(SourceLanguage language) {
+        switch (language) {
+            case SourceLanguage::C: return "C";
+            case SourceLanguage::Cpp: return "C++";
+            case SourceLanguage::Java: return "Java";
+            case SourceLanguage::JavaScript: return "JavaScript";
+            case SourceLanguage::TypeScript: return "TypeScript";
+            case SourceLanguage::Go: return "Go";
+            case SourceLanguage::CSharp: return "C#";
+            case SourceLanguage::Rust: return "Rust";
+            case SourceLanguage::Unknown: return "Unknown";
+        }
+        return "Unknown";
+    }
+
+    static bool is_supported_file(const std::filesystem::path& path) {
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(path, ec))
+            return false;
+        return detect_language(path.string()) != SourceLanguage::Unknown;
+    }
+
+    static std::vector<std::string> collect_supported_files(const std::string& root) {
+        namespace fs = std::filesystem;
+
+        std::vector<std::string> files;
+        std::error_code ec;
+        fs::recursive_directory_iterator it(
+            root,
+            fs::directory_options::skip_permission_denied,
+            ec);
+        fs::recursive_directory_iterator end;
+
+        for (; it != end; it.increment(ec)) {
+            if (ec) {
+                ec.clear();
+                continue;
+            }
+
+            const fs::directory_entry& entry = *it;
+            if (entry.is_directory(ec)) {
+                if (should_skip_directory(entry.path()))
+                    it.disable_recursion_pending();
+                continue;
+            }
+            if (ec) {
+                ec.clear();
+                continue;
+            }
+
+            if (is_supported_file(entry.path()))
+                files.push_back(entry.path().lexically_normal().string());
+        }
+
+        std::sort(files.begin(), files.end());
+        return files;
+    }
+
+    static std::string summarize_languages(const std::vector<FunctionProfile>& profiles) {
+        std::set<std::string> languages;
+        for (const auto& fp : profiles) {
+            if (!fp.language.empty() && fp.language != "Unknown")
+                languages.insert(fp.language);
+        }
+        if (languages.empty())
+            return "Unknown";
+        if (languages.size() == 1)
+            return *languages.begin();
+
+        std::ostringstream out;
+        out << "Mixed (";
+        bool first = true;
+        for (const auto& language : languages) {
+            if (!first)
+                out << ", ";
+            out << language;
+            first = false;
+        }
+        out << ")";
+        return out.str();
+    }
+
+private:
+    static std::vector<std::string> read_lines(const std::string& filepath) {
         std::ifstream f(filepath);
         if (!f.is_open())
             throw std::runtime_error("无法打开文件: " + filepath);
@@ -63,18 +232,63 @@ public:
         std::string line;
         while (std::getline(f, line))
             lines.push_back(line);
-
-        auto profiles = extract_functions(lines, filepath);
-        build_call_graph(profiles, lines);
-        return profiles;
+        return lines;
     }
 
-private:
+    static std::vector<FunctionProfile> analyze_file(const std::string& filepath,
+                                                     const std::string& display_path) {
+        const auto lines = read_lines(filepath);
+        const SourceLanguage language = detect_language(filepath);
+        return extract_functions(lines, filepath, display_path, language);
+    }
+
+    static bool should_skip_directory(const std::filesystem::path& path) {
+        const std::string name = path.filename().string();
+        static const std::set<std::string> skipped = {
+            ".git", ".hg", ".svn", ".idea", ".vscode", ".cache",
+            "build", "dist", "out", "target", "node_modules",
+            "cmake-build-debug", "cmake-build-release"
+        };
+        if (skipped.count(name))
+            return true;
+        return !name.empty() && name[0] == '.';
+    }
+
+    static std::string relative_display_path(const std::filesystem::path& file,
+                                             const std::filesystem::path& root) {
+        std::error_code ec;
+        std::filesystem::path relative = std::filesystem::relative(file, root, ec);
+        if (ec || relative.empty())
+            return file.lexically_normal().string();
+        return relative.lexically_normal().string();
+    }
+
+    static std::string extension_of(const std::string& filepath) {
+        size_t slash = filepath.find_last_of("/\\");
+        size_t dot = filepath.find_last_of('.');
+        if (dot == std::string::npos || (slash != std::string::npos && dot < slash))
+            return "";
+        std::string ext = filepath.substr(dot);
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) {
+            return (char)std::tolower(ch);
+        });
+        return ext;
+    }
+
     // 去除行尾注释
     static std::string strip_line_comment(const std::string& s) {
         bool in_str = false;
+        char quote = 0;
         for (size_t i = 0; i < s.size(); ++i) {
-            if (s[i] == '"' && (i == 0 || s[i-1] != '\\')) in_str = !in_str;
+            if ((s[i] == '"' || s[i] == '\'' || s[i] == '`') && (i == 0 || s[i-1] != '\\')) {
+                if (!in_str) {
+                    in_str = true;
+                    quote = s[i];
+                } else if (quote == s[i]) {
+                    in_str = false;
+                    quote = 0;
+                }
+            }
             if (!in_str && i+1 < s.size() && s[i] == '/' && s[i+1] == '/')
                 return s.substr(0, i);
         }
@@ -105,9 +319,17 @@ private:
         std::string s = strip_line_comment(raw);
         int delta = 0;
         bool in_str = false;
-        char prev = 0;
+        char quote = 0, prev = 0;
         for (char c : s) {
-            if (c == '"' && prev != '\\') in_str = !in_str;
+            if ((c == '"' || c == '\'' || c == '`') && prev != '\\') {
+                if (!in_str) {
+                    in_str = true;
+                    quote = c;
+                } else if (quote == c) {
+                    in_str = false;
+                    quote = 0;
+                }
+            }
             if (!in_str) {
                 if (c == '{') ++delta;
                 else if (c == '}') --delta;
@@ -129,13 +351,146 @@ private:
         return s.rfind(prefix, 0) == 0;
     }
 
+    static bool is_identifier_char(char c) {
+        return std::isalnum((unsigned char)c) || c == '_' || c == '$';
+    }
+
+    static bool is_valid_name(const std::string& name) {
+        if (name.empty()) return false;
+        if (!std::isalpha((unsigned char)name[0]) && name[0] != '_' &&
+            name[0] != '~' && name[0] != '$')
+            return false;
+        static const std::set<std::string> kws = {
+            "if","else","for","while","do","switch","try","catch","return",
+            "case","default","operator","class","struct","namespace","enum",
+            "union","function","func","fn","new","public","private","protected",
+            "static","async","await","export","default","const","let","var",
+            "get","set","synchronized"
+        };
+        return !kws.count(name);
+    }
+
+    static bool contains_word(const std::string& s, const std::string& word) {
+        size_t pos = 0;
+        while ((pos = s.find(word, pos)) != std::string::npos) {
+            bool left_ok = pos == 0 || !is_identifier_char(s[pos - 1]);
+            size_t right = pos + word.size();
+            bool right_ok = right >= s.size() || !is_identifier_char(s[right]);
+            if (left_ok && right_ok)
+                return true;
+            pos = right;
+        }
+        return false;
+    }
+
     static bool has_semicolon_before_body(const std::string& s) {
         size_t semi = s.find(';');
         size_t body = s.find('{');
         return semi != std::string::npos && (body == std::string::npos || semi < body);
     }
 
-    static std::string detect_func_name(const std::string& raw) {
+    static bool uses_semicolon_signatures(SourceLanguage language) {
+        return language == SourceLanguage::C ||
+               language == SourceLanguage::Cpp ||
+               language == SourceLanguage::Java ||
+               language == SourceLanguage::CSharp ||
+               language == SourceLanguage::Unknown;
+    }
+
+    static std::string parse_name_before_paren(const std::string& head) {
+        size_t paren = head.find('(');
+        if (paren == std::string::npos)
+            return "";
+        std::string before = head.substr(0, paren);
+        size_t ne = before.find_last_not_of(" \t");
+        if (ne == std::string::npos) return "";
+        size_t ns = before.find_last_of(" \t:>*&~.", ne);
+        ns = (ns == std::string::npos) ? 0 : ns + 1;
+        std::string name = before.substr(ns, ne - ns + 1);
+        return is_valid_name(name) ? name : "";
+    }
+
+    static std::string parse_go_name(const std::string& head) {
+        std::string s = trim(head);
+        if (!starts_with(s, "func "))
+            return "";
+
+        s = trim(s.substr(5));
+        if (!s.empty() && s[0] == '(') {
+            int depth = 0;
+            size_t i = 0;
+            for (; i < s.size(); ++i) {
+                if (s[i] == '(') ++depth;
+                else if (s[i] == ')' && --depth == 0) {
+                    ++i;
+                    break;
+                }
+            }
+            s = trim(s.substr(i));
+        }
+
+        size_t end = 0;
+        while (end < s.size() && is_identifier_char(s[end])) ++end;
+        std::string name = s.substr(0, end);
+        return is_valid_name(name) ? name : "";
+    }
+
+    static std::string parse_rust_name(const std::string& head) {
+        size_t fn = head.find("fn ");
+        if (fn == std::string::npos)
+            return "";
+        fn += 3;
+        while (fn < head.size() && std::isspace((unsigned char)head[fn])) ++fn;
+        size_t end = fn;
+        while (end < head.size() && is_identifier_char(head[end])) ++end;
+        std::string name = head.substr(fn, end - fn);
+        return is_valid_name(name) ? name : "";
+    }
+
+    static std::string parse_js_name(const std::string& head) {
+        std::string s = trim(head);
+        while (starts_with(s, "export "))
+            s = trim(s.substr(7));
+        while (starts_with(s, "default "))
+            s = trim(s.substr(8));
+
+        size_t function_pos = s.find("function ");
+        if (function_pos != std::string::npos) {
+            size_t pos = function_pos + 9;
+            while (pos < s.size() && std::isspace((unsigned char)s[pos])) ++pos;
+            if (pos < s.size() && s[pos] == '*') ++pos;
+            while (pos < s.size() && std::isspace((unsigned char)s[pos])) ++pos;
+            size_t end = pos;
+            while (end < s.size() && is_identifier_char(s[end])) ++end;
+            std::string name = s.substr(pos, end - pos);
+            return is_valid_name(name) ? name : "";
+        }
+
+        size_t arrow = s.find("=>");
+        if (arrow != std::string::npos) {
+            size_t eq = arrow == 0 ? std::string::npos : s.rfind('=', arrow - 1);
+            if (eq != std::string::npos) {
+                std::string left = trim(s.substr(0, eq));
+                for (const char* kw : {"const ", "let ", "var ", "static "})
+                    if (starts_with(left, kw)) left = trim(left.substr(std::string(kw).size()));
+                size_t dot = left.find_last_of('.');
+                if (dot != std::string::npos) left = left.substr(dot + 1);
+                size_t colon = left.find(':');
+                if (colon != std::string::npos) left = left.substr(0, colon);
+                size_t space = left.find_last_of(" \t");
+                if (space != std::string::npos) left = left.substr(space + 1);
+                left = trim(left);
+                return is_valid_name(left) ? left : "";
+            }
+        }
+
+        std::string method = s;
+        for (const char* kw : {"async ", "static ", "get ", "set ", "*"})
+            if (starts_with(method, kw)) method = trim(method.substr(std::string(kw).size()));
+        return parse_name_before_paren(method);
+    }
+
+    static std::string detect_func_name(const std::string& raw, SourceLanguage language) {
         std::string s = trim(raw);
 
         if (s.empty() || s[0] == '#') return "";
@@ -147,34 +502,29 @@ private:
         if (body == std::string::npos)
             return "";
 
-        if (has_semicolon_before_body(s))
+        if (uses_semicolon_signatures(language) && has_semicolon_before_body(s))
             return "";
 
         std::string head = trim(s.substr(0, body));
         if (head.empty() || head.find('(') == std::string::npos)
             return "";
+
+        if (language == SourceLanguage::Go)
+            return parse_go_name(head);
+        if (language == SourceLanguage::Rust)
+            return parse_rust_name(head);
+        if (language == SourceLanguage::JavaScript || language == SourceLanguage::TypeScript)
+            return parse_js_name(head);
+
         if (head.find('=') != std::string::npos)
             return "";
 
-        size_t paren = head.find('(');
-        std::string before = head.substr(0, paren);
-        size_t ne = before.find_last_not_of(" \t");
-        if (ne == std::string::npos) return "";
-        size_t ns = before.find_last_of(" \t:>*&~", ne);
-        ns = (ns == std::string::npos) ? 0 : ns + 1;
-        std::string name = before.substr(ns, ne - ns + 1);
-
-        static const std::set<std::string> kws = {
-            "if","else","for","while","do","switch","try","catch","return",
-            "case","default","operator"
-        };
-        if (kws.count(name) || name.empty()) return "";
-        if (!std::isalpha((unsigned char)name[0]) && name[0] != '_' && name[0] != '~') return "";
-        return name;
+        return parse_name_before_paren(head);
     }
 
     static bool detect_function_at(const std::vector<std::string>& lines,
                                    int start,
+                                   SourceLanguage language,
                                    std::string& name,
                                    int& body_start) {
         std::string sig;
@@ -193,7 +543,8 @@ private:
                     return false;
                 if (starts_with(part, "class ") || starts_with(part, "struct ") ||
                     starts_with(part, "namespace ") || starts_with(part, "enum ") ||
-                    starts_with(part, "union "))
+                    starts_with(part, "union ") || starts_with(part, "interface ") ||
+                    starts_with(part, "type ") || starts_with(part, "impl "))
                     return false;
             }
 
@@ -201,11 +552,11 @@ private:
                 sig += ' ';
             sig += part;
 
-            if (has_semicolon_before_body(sig))
+            if (uses_semicolon_signatures(language) && has_semicolon_before_body(sig))
                 return false;
 
             if (sig.find('{') != std::string::npos) {
-                name = detect_func_name(sig);
+                name = detect_func_name(sig, language);
                 if (name.empty())
                     return false;
                 body_start = j;
@@ -224,12 +575,11 @@ private:
             std::string s = strip_line_comment(lines[i]);
 
             // 循环检测
-            bool is_loop = (s.find("for(")   != std::string::npos ||
-                            s.find("for (")  != std::string::npos ||
-                            s.find("while(") != std::string::npos ||
-                            s.find("while (")!= std::string::npos ||
-                            s.find("do {")   != std::string::npos ||
-                            s.find("do{")    != std::string::npos);
+            bool is_loop = (contains_word(s, "for") ||
+                            contains_word(s, "while") ||
+                            contains_word(s, "do") ||
+                            contains_word(s, "foreach") ||
+                            contains_word(s, "range"));
             if (is_loop) {
                 ++loop_count;
                 ++loop_depth;
@@ -251,10 +601,11 @@ private:
             fp.raw.atomic += count_any(s, PAT_ATOMIC);
 
             // 分支
-            if (s.find("if(")     != std::string::npos ||
-                s.find("if (")    != std::string::npos ||
-                s.find("switch(") != std::string::npos ||
-                s.find("switch (")!= std::string::npos ||
+            if (contains_word(s, "if") ||
+                contains_word(s, "switch") ||
+                contains_word(s, "case") ||
+                contains_word(s, "catch") ||
+                contains_word(s, "match") ||
                 s.find(" ? ")     != std::string::npos)
                 ++fp.raw.branch;
 
@@ -275,9 +626,11 @@ private:
     }
 
     // 提取所有函数
-    std::vector<FunctionProfile> extract_functions(
+    static std::vector<FunctionProfile> extract_functions(
             const std::vector<std::string>& lines,
-            const std::string& filepath) {
+            const std::string& filepath,
+            const std::string& display_path,
+            SourceLanguage language) {
 
         std::vector<FunctionProfile> profiles;
         int n = (int)lines.size();
@@ -286,18 +639,20 @@ private:
         while (i < n) {
             std::string name;
             int body_start = i;
-            detect_function_at(lines, i, name, body_start);
+            detect_function_at(lines, i, language, name, body_start);
             if (name.empty()) { ++i; continue; }
 
             FunctionProfile fp;
-            fp.name       = name;
-            fp.file       = filepath;
-            fp.line_start = i + 1;
+            fp.name        = name;
+            fp.file        = display_path;
+            fp.source_path = filepath;
+            fp.language    = language_display_name(language);
+            fp.line_start  = i + 1;
 
-            int depth = 0, j = body_start;
-            depth += brace_delta(lines[j]);
+            int depth = brace_delta(lines[body_start]);
+            int j = body_start + 1;
             while (j < n && depth > 0) {
-                if (j > body_start) depth += brace_delta(lines[j]);
+                depth += brace_delta(lines[j]);
                 ++j;
             }
             fp.line_end = j;
@@ -310,14 +665,23 @@ private:
     }
 
     // 构建调用图
-    static void build_call_graph(std::vector<FunctionProfile>& profiles,
-                                  const std::vector<std::string>& lines) {
+    static void build_call_graph(std::vector<FunctionProfile>& profiles) {
         std::vector<std::string> names;
-        for (const auto& fp : profiles) names.push_back(fp.name);
+        for (const auto& fp : profiles)
+            names.push_back(fp.name);
+
+        std::map<std::string, std::vector<std::string>> file_cache;
 
         for (auto& fp : profiles) {
+            fp.callees.clear();
+
+            auto cache_it = file_cache.find(fp.source_path);
+            if (cache_it == file_cache.end())
+                cache_it = file_cache.emplace(fp.source_path, read_lines(fp.source_path)).first;
+
+            const auto& lines = cache_it->second;
             for (int i = fp.line_start - 1; i < fp.line_end && i < (int)lines.size(); ++i) {
-                std::string s = strip_line_comment(lines[i]);
+                std::string s = strip_line_comment(lines[(size_t)i]);
                 for (const auto& nm : names) {
                     if (nm == fp.name) continue;
                     if (s.find(nm + "(") != std::string::npos) {

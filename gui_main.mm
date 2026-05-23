@@ -5,6 +5,7 @@
 #include <exception>
 #include <filesystem>
 #include <iomanip>
+#include <limits>
 #include <cmath>
 #include <sstream>
 #include <string>
@@ -13,6 +14,7 @@
 #include "carbon_model.hpp"
 #include "energy_estimator.hpp"
 #include "function_profile.hpp"
+#include "path_utils.hpp"
 #include "static_analyzer.hpp"
 
 static NSColor* rgb(int r, int g, int b) {
@@ -73,17 +75,14 @@ static std::string shorten(const std::string& s, size_t max_len) {
     return s.substr(0, max_len - 3) + "...";
 }
 
-static NSInteger top_hotspot_index(const ProgramProfile* program) {
-    if (!program || program->functions.empty())
-        return -1;
-
-    NSInteger best = 0;
-    for (NSInteger i = 1; i < (NSInteger)program->functions.size(); ++i) {
-        if (program->functions[(size_t)i].estimated_co2_mg >
-            program->functions[(size_t)best].estimated_co2_mg)
-            best = i;
-    }
-    return best;
+static std::vector<std::filesystem::path> app_search_hints() {
+    std::vector<std::filesystem::path> hints = {
+        std::filesystem::current_path()
+    };
+    NSString* executable = [NSBundle mainBundle].executablePath;
+    if (executable != nil)
+        hints.push_back(std::filesystem::path(executable.UTF8String).parent_path());
+    return hints;
 }
 
 static NSTextField* label(NSRect frame, NSString* text, CGFloat size = 13.0) {
@@ -144,10 +143,7 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
 }
 
 - (void)reloadData {
-    NSInteger top_index = top_hotspot_index(_program);
     NSInteger count = _program ? (NSInteger)_program->functions.size() : 0;
-    if (top_index >= 0)
-        --count;
     CGFloat width = std::max<CGFloat>(visible_document_width(self, 640.0),
                                       112.0 + std::max<NSInteger>(count - 1, 0) * 92.0);
     [self setFrameSize:NSMakeSize(width, visible_document_height(self, 240.0))];
@@ -177,8 +173,8 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     };
 
     NSString* chart_title = _english ? @"Function Carbon Chart" : @"函数碳排放折线图";
-    NSString* chart_note = _english ? @"Top function is summarized separately; others use nonlinear scaling"
-                                    : @"最高函数单独统计，其余函数按字母顺序和非线性刻度绘制";
+    NSString* chart_note = _english ? @"All functions are shown on one chart with nonlinear scaling"
+                                    : @"所有函数统一显示在一张折线图中，采用非线性刻度";
     [chart_title drawAtPoint:NSMakePoint(16, 14) withAttributes:title_attr];
     [chart_note drawAtPoint:NSMakePoint(_english ? 176 : 150, 16) withAttributes:muted_attr];
 
@@ -190,39 +186,14 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     }
 
     std::vector<NSInteger> plotted;
-    NSInteger top_index = top_hotspot_index(_program);
-    for (NSInteger i = 0; i < (NSInteger)_program->functions.size(); ++i) {
-        if (i != top_index)
-            plotted.push_back(i);
-    }
+    for (NSInteger i = 0; i < (NSInteger)_program->functions.size(); ++i)
+        plotted.push_back(i);
     std::sort(plotted.begin(), plotted.end(), [&](NSInteger a, NSInteger b) {
         return _program->functions[(size_t)a].name < _program->functions[(size_t)b].name;
     });
-    std::sort(plotted.begin(), plotted.end(), [&](NSInteger a, NSInteger b) {
-        return _program->functions[(size_t)a].name < _program->functions[(size_t)b].name;
-    });
-
-    NSRect top_card = NSMakeRect(std::max<CGFloat>(16.0, self.bounds.size.width - 272.0), 10, 250, 38);
-    if (top_index >= 0) {
-        const auto& top_fp = _program->functions[(size_t)top_index];
-        NSColor* top_fill = (_selectedRow == top_index) ? gh_card_subtle() : gh_bg();
-        [top_fill setFill];
-        NSBezierPath* box = [NSBezierPath bezierPathWithRoundedRect:top_card xRadius:8 yRadius:8];
-        [box fill];
-        [gh_border() setStroke];
-        [box setLineWidth:1.0];
-        [box stroke];
-        [ns((_english ? "Top: " : "最高: ") + shorten(top_fp.name, 14))
-            drawAtPoint:NSMakePoint(top_card.origin.x + 12, top_card.origin.y + 6)
-         withAttributes:muted_attr];
-        [ns(fmt_co2(top_fp.estimated_co2_mg) + " CO2eq")
-            drawAtPoint:NSMakePoint(top_card.origin.x + 138, top_card.origin.y + 6)
-         withAttributes:value_attr];
-    }
-
     if (plotted.empty()) {
-        NSString* empty = _english ? @"No drawable functions besides the top function."
-                                   : @"除最高函数外没有可绘制的函数。";
+        NSString* empty = _english ? @"No functions available to draw."
+                                   : @"没有可绘制的函数。";
         [empty drawAtPoint:NSMakePoint(16, 58) withAttributes:muted_attr];
         return;
     }
@@ -261,11 +232,20 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
         auto it = std::find(plotted.begin(), plotted.end(), _selectedRow);
         if (it != plotted.end()) {
             CGFloat x = left + (it - plotted.begin()) * step;
-            [gh_card_subtle() setFill];
+            [[gh_blue() colorWithAlphaComponent:0.12] setFill];
             NSBezierPath* selected = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(x - 42, 42, 84, self.bounds.size.height - 52.0)
                                                                      xRadius:8
                                                                      yRadius:8];
             [selected fill];
+
+            [[gh_blue() colorWithAlphaComponent:0.35] setStroke];
+            NSBezierPath* guide = [NSBezierPath bezierPath];
+            [guide moveToPoint:NSMakePoint(x, top)];
+            [guide lineToPoint:NSMakePoint(x, axis_y)];
+            CGFloat dash[] = {4.0, 4.0};
+            [guide setLineDash:dash count:2 phase:0.0];
+            [guide setLineWidth:1.5];
+            [guide stroke];
         }
     }
 
@@ -308,9 +288,17 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
         [point fill];
 
         if (idx == _selectedRow) {
-            [gh_text() setStroke];
-            NSBezierPath* ring = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(x - 8, y - 8, 16, 16)];
-            [ring setLineWidth:2.0];
+            [[gh_blue() colorWithAlphaComponent:0.18] setFill];
+            NSBezierPath* halo = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(x - 12, y - 12, 24, 24)];
+            [halo fill];
+
+            [gh_text() setFill];
+            NSBezierPath* selected_point = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(x - 6, y - 6, 12, 12)];
+            [selected_point fill];
+
+            [gh_blue() setStroke];
+            NSBezierPath* ring = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(x - 10, y - 10, 20, 20)];
+            [ring setLineWidth:2.5];
             [ring stroke];
         }
 
@@ -328,45 +316,83 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     if (!_program || _program->functions.empty())
         return;
 
-    NSInteger top_index = top_hotspot_index(_program);
     std::vector<NSInteger> plotted;
-    for (NSInteger i = 0; i < (NSInteger)_program->functions.size(); ++i) {
-        if (i != top_index)
-            plotted.push_back(i);
-    }
-
-    NSRect top_card = NSMakeRect(std::max<CGFloat>(16.0, self.bounds.size.width - 272.0), 10, 250, 38);
-    if (top_index >= 0 && NSPointInRect(p, top_card)) {
-        _selectedRow = top_index;
-        [self setNeedsDisplay:YES];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-        if (_target && _action && [_target respondsToSelector:_action])
-            [_target performSelector:_action withObject:self];
-#pragma clang diagnostic pop
-        return;
-    }
+    for (NSInteger i = 0; i < (NSInteger)_program->functions.size(); ++i)
+        plotted.push_back(i);
+    std::sort(plotted.begin(), plotted.end(), [&](NSInteger a, NSInteger b) {
+        return _program->functions[(size_t)a].name < _program->functions[(size_t)b].name;
+    });
 
     const CGFloat left = 58.0;
     const CGFloat right = 30.0;
     const NSInteger count = (NSInteger)plotted.size();
-    if (count == 1) {
-        if (std::fabs(p.x - left) <= 56.0) {
-            _selectedRow = plotted.front();
-            [self setNeedsDisplay:YES];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-            if (_target && _action && [_target respondsToSelector:_action])
-                [_target performSelector:_action withObject:self];
-#pragma clang diagnostic pop
-        }
+    if (count <= 0)
         return;
+
+    double max_co2 = 0.0;
+    double min_positive = 0.0;
+    for (NSInteger idx : plotted) {
+        double co2 = _program->functions[(size_t)idx].estimated_co2_mg;
+        if (co2 > 0.0 && (min_positive <= 0.0 || co2 < min_positive))
+            min_positive = co2;
+        max_co2 = std::max(max_co2, co2);
+    }
+    if (max_co2 <= 0.0)
+        max_co2 = 1.0;
+    if (min_positive <= 0.0)
+        min_positive = max_co2 * 0.01;
+    double floor_co2 = min_positive * 0.25;
+    double log_min = std::log10(floor_co2);
+    double log_max = std::log10(max_co2 + floor_co2);
+    double log_span = log_max - log_min;
+    auto scaled_value = [&](double co2) {
+        if (log_span <= 1e-9)
+            return std::clamp(co2 / max_co2, 0.0, 1.0);
+        return std::clamp((std::log10(co2 + floor_co2) - log_min) / log_span, 0.0, 1.0);
+    };
+
+    const CGFloat top = 52.0;
+    const CGFloat plot_h = std::max<CGFloat>(96.0, self.bounds.size.height - top - 94.0);
+    const CGFloat axis_y = top + plot_h;
+    const CGFloat step = count > 1
+        ? std::max<CGFloat>(56.0, (self.bounds.size.width - left - right) / (count - 1))
+        : 0.0;
+
+    NSInteger matched_row = -1;
+    double best_score = std::numeric_limits<double>::infinity();
+    for (NSInteger i = 0; i < count; ++i) {
+        NSInteger idx = plotted[(size_t)i];
+        const auto& fp = _program->functions[(size_t)idx];
+        CGFloat x = left + i * step;
+        CGFloat y = top + (1.0 - (CGFloat)scaled_value(fp.estimated_co2_mg)) * plot_h;
+
+        NSRect point_rect = NSInsetRect(NSMakeRect(x - 9, y - 9, 18, 18), -5, -5);
+        NSRect value_rect = NSMakeRect(x - 40, std::max<CGFloat>(32.0, y - 28), 80, 20);
+        NSRect name_rect = NSMakeRect(x - 44, axis_y + 12, 88, 40);
+
+        double score = std::numeric_limits<double>::infinity();
+        if (NSPointInRect(p, point_rect)) {
+            score = 0.0;
+        } else if (NSPointInRect(p, value_rect)) {
+            score = 10.0;
+        } else if (NSPointInRect(p, name_rect)) {
+            score = 20.0;
+        } else {
+            const double dx = p.x - x;
+            const double dy = p.y - y;
+            const double dist2 = dx * dx + dy * dy;
+            if (dist2 <= 26.0 * 26.0)
+                score = 100.0 + dist2;
+        }
+
+        if (score < best_score) {
+            best_score = score;
+            matched_row = idx;
+        }
     }
 
-    const CGFloat step = std::max<CGFloat>(56.0, (self.bounds.size.width - left - right) / (count - 1));
-    NSInteger row = (NSInteger)std::llround((p.x - left) / step);
-    if (row >= 0 && row < (NSInteger)plotted.size()) {
-        _selectedRow = plotted[(size_t)row];
+    if (matched_row >= 0) {
+        _selectedRow = matched_row;
         [self setNeedsDisplay:YES];
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
@@ -392,7 +418,7 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     self = [super initWithFrame:frame];
     if (self) {
         _selectedRow = -1;
-        _message = @"选择源文件并点击“开始分析”。";
+        _message = @"选择源文件或项目目录并点击“开始分析”。";
         self.wantsLayer = YES;
         self.layer.backgroundColor = gh_card().CGColor;
     }
@@ -484,6 +510,8 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
 
     std::ostringstream location;
     location << fp.file << ":" << fp.line_start << "-" << fp.line_end;
+    if (!fp.language.empty())
+        location << "  " << (_english ? "Language " : "语言 ") << fp.language;
     [ns(shorten(location.str(), (size_t)std::max<CGFloat>(48.0, content_w / 7.0)))
         drawAtPoint:NSMakePoint(18, 70)
      withAttributes:muted_attr];
@@ -751,6 +779,7 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
 
     std::vector<std::string> hw_keys_;
     std::vector<std::string> grid_keys_;
+    std::string source_path_;
     ProgramProfile program_;
     BOOL english_;
 }
@@ -759,10 +788,7 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     self = [super init];
     if (self) {
         english_ = NO;
-        hw_keys_ = {
-            "rpi4", "laptop_low", "laptop_mid", "desktop_mid",
-            "desktop_high", "server_1u", "server_hpc"
-        };
+        hw_keys_ = HARDWARE_PROFILE_KEYS;
         grid_keys_ = {
             "cn", "us", "us_ca", "us_tx", "eu", "de", "fr",
             "no", "uk", "jp", "au", "br", "in", "global"
@@ -821,16 +847,20 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     language_popup_.action = @selector(languageChanged:);
     [root addSubview:language_popup_];
 
-    source_title_ = label(NSMakeRect(44, 604, 120, 20), @"源文件", 13.0);
+    source_title_ = label(NSMakeRect(44, 604, 120, 20), @"源路径", 13.0);
     [root addSubview:source_title_];
     file_field_ = [[NSTextField alloc] initWithFrame:NSMakeRect(44, 574, 188, 28)];
-    file_field_.stringValue = @"demo.cpp";
+    {
+        const std::string demo_path = find_demo_path(app_search_hints());
+        source_path_ = demo_path.empty() ? "demo.cpp" : demo_path;
+        file_field_.stringValue = ns(compact_input_path_label(source_path_));
+    }
     file_field_.textColor = gh_text();
     file_field_.backgroundColor = gh_bg();
     [root addSubview:file_field_];
 
     browse_button_ = [[NSButton alloc] initWithFrame:NSMakeRect(238, 574, 58, 28)];
-    browse_button_.title = @"选择";
+    browse_button_.title = @"路径";
     browse_button_.bezelStyle = NSBezelStyleRounded;
     browse_button_.target = self;
     browse_button_.action = @selector(selectFile:);
@@ -843,7 +873,7 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
         const auto it = HARDWARE_PROFILES.find(key);
         [hw_popup_ addItemWithTitle:ns(it != HARDWARE_PROFILES.end() ? it->second.name : key)];
     }
-    [hw_popup_ selectItemAtIndex:2];
+    [hw_popup_ selectItemAtIndex:7];
     [root addSubview:hw_popup_];
 
     grid_title_ = label(NSMakeRect(44, 446, 120, 20), @"电网区域", 13.0);
@@ -1007,11 +1037,22 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
         return ns(it != HARDWARE_PROFILES.end() ? it->second.name : key);
     }
     if (key == "rpi4") return @"Raspberry Pi 4";
+    if (key == "rpi5") return @"Raspberry Pi 5";
+    if (key == "jetson_nano") return @"Jetson Nano";
+    if (key == "jetson_orin") return @"Jetson Orin Nano";
+    if (key == "mini_pc_n100") return @"Mini PC (Intel N100)";
     if (key == "laptop_low") return @"Laptop Low Power (~15W TDP)";
+    if (key == "macbook_air_m2") return @"MacBook Air (M2)";
     if (key == "laptop_mid") return @"Laptop Mid Range (~28W TDP)";
+    if (key == "macbook_pro_m3") return @"MacBook Pro (M3)";
+    if (key == "laptop_high") return @"Laptop High Performance (~45W TDP)";
+    if (key == "desktop_entry") return @"Desktop Entry (~35W TDP)";
     if (key == "desktop_mid") return @"Desktop Mid Range (~65W TDP)";
     if (key == "desktop_high") return @"Desktop High End (~125W TDP)";
+    if (key == "workstation_pro") return @"Workstation Pro (~220W TDP)";
     if (key == "server_1u") return @"Server 1U";
+    if (key == "server_dual") return @"Server Dual Socket";
+    if (key == "server_arm") return @"Server ARM Node";
     if (key == "server_hpc") return @"Server HPC Node";
     return ns(key);
 }
@@ -1065,8 +1106,8 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     subtitle_.stringValue = [self textCN:@"碳排放静态分析器" en:@"Carbon Static Analyzer"];
     config_title_.stringValue = [self textCN:@"分析配置" en:@"Analysis Config"];
     language_title_.stringValue = [self textCN:@"语言" en:@"Language"];
-    source_title_.stringValue = [self textCN:@"源文件" en:@"Source File"];
-    browse_button_.title = [self textCN:@"选择" en:@"Choose"];
+    source_title_.stringValue = [self textCN:@"源路径" en:@"Source Path"];
+    browse_button_.title = [self textCN:@"路径" en:@"Path"];
     hw_title_.stringValue = [self textCN:@"硬件配置" en:@"Hardware Profile"];
     grid_title_.stringValue = [self textCN:@"电网区域" en:@"Grid Region"];
     analyze_button_.title = [self textCN:@"开始分析" en:@"Run Analysis"];
@@ -1080,11 +1121,18 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
     if ([status_label_.stringValue isEqualToString:@"等待分析"] ||
         [status_label_.stringValue isEqualToString:@"Waiting for analysis"])
         status_label_.stringValue = [self textCN:@"等待分析" en:@"Waiting for analysis"];
-    if ([status_label_.stringValue isEqualToString:@"分析完成"] ||
-        [status_label_.stringValue isEqualToString:@"Analysis complete"])
-        status_label_.stringValue = [self textCN:@"分析完成" en:@"Analysis complete"];
+    if (!program_.functions.empty()) {
+        std::ostringstream status;
+        status << (english_ ? "Analysis complete" : "分析完成");
+        status << " · " << program_.analyzed_files
+               << (english_ ? " files" : " 个文件");
+        status << " · " << program_.functions.size()
+               << (english_ ? " functions" : " 个函数");
+        status_label_.stringValue = ns(status.str());
+    }
     if (!detail_view_.program && detail_view_.selectedRow < 0)
-        detail_view_.message = [self textCN:@"选择源文件并点击“开始分析”。" en:@"Choose a source file and click Run Analysis."];
+        detail_view_.message = [self textCN:@"选择源文件或项目目录并点击“开始分析”。"
+                                          en:@"Choose a source file or project folder and click Run Analysis."];
     [chart_view_ reloadData];
     [detail_view_ reloadData];
 }
@@ -1100,29 +1148,39 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
 
     NSOpenPanel* panel = [NSOpenPanel openPanel];
     panel.canChooseFiles = YES;
-    panel.canChooseDirectories = NO;
+    panel.canChooseDirectories = YES;
     panel.allowsMultipleSelection = NO;
-    if ([panel runModal] == NSModalResponseOK)
-        file_field_.stringValue = panel.URL.path;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    panel.allowedFileTypes = @[
+        @"c", @"h", @"cpp", @"cc", @"cxx", @"hpp", @"hh", @"hxx",
+        @"java", @"js", @"mjs", @"cjs", @"jsx", @"ts", @"tsx",
+        @"go", @"cs", @"rs"
+    ];
+#pragma clang diagnostic pop
+    if ([panel runModal] == NSModalResponseOK) {
+        source_path_ = panel.URL.path.UTF8String;
+        file_field_.stringValue = ns(compact_input_path_label(source_path_));
+    }
 }
 
 - (void)runAnalysis:(id)sender {
     (void)sender;
 
-    std::string path = file_field_.stringValue.UTF8String;
+    std::string path = source_path_;
     if (path.empty())
-        path = "demo.cpp";
+        path = find_demo_path(app_search_hints());
 
-    if (!std::filesystem::exists(path)) {
-        std::string parent = "../" + path;
-        if (std::filesystem::exists(parent))
-            path = parent;
-    }
+    std::string resolved = resolve_existing_path(path, app_search_hints());
+    if (!resolved.empty())
+        path = resolved;
 
-    if (!std::filesystem::exists(path)) {
-        [self setError:((english_ ? "Source file not found: " : "找不到源文件: ") + path)];
+    if (path.empty() || !std::filesystem::exists(path)) {
+        [self setError:((english_ ? "Source path not found: " : "找不到源路径: ") + path)];
         return;
     }
+    source_path_ = path;
+    file_field_.stringValue = ns(compact_input_path_label(source_path_));
 
     const auto hw_index = (size_t)hw_popup_.indexOfSelectedItem;
     const auto grid_index = (size_t)grid_popup_.indexOfSelectedItem;
@@ -1142,16 +1200,25 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
 
     try {
         StaticAnalyzer analyzer;
-        auto functions = analyzer.analyze(path);
+        auto functions = analyzer.analyze_path(path);
         if (functions.empty()) {
             [self setError:(english_ ? "No function definitions were detected" : "没有识别到函数定义")];
             return;
         }
 
+        const bool is_directory = std::filesystem::is_directory(std::filesystem::path(path));
         program_ = ProgramProfile{};
         program_.source_file = path;
+        program_.language = is_directory
+            ? StaticAnalyzer::summarize_languages(functions)
+            : StaticAnalyzer::language_display_name(
+                StaticAnalyzer::detect_language(path));
         program_.hardware_key = hw_key;
         program_.grid_key = grid_key;
+        program_.analyzed_files = is_directory
+            ? StaticAnalyzer::collect_supported_files(path).size()
+            : 1;
+        program_.source_is_directory = is_directory;
         program_.functions = std::move(functions);
 
         EnergyEstimator estimator(hw_it->second, grid_it->second);
@@ -1161,7 +1228,13 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
         return;
     }
 
-    status_label_.stringValue = [self textCN:@"分析完成" en:@"Analysis complete"];
+    std::ostringstream status;
+    status << (english_ ? "Analysis complete" : "分析完成");
+    status << " · " << program_.analyzed_files
+           << (english_ ? " files" : " 个文件");
+    status << " · " << program_.functions.size()
+           << (english_ ? " functions" : " 个函数");
+    status_label_.stringValue = ns(status.str());
     status_label_.textColor = gh_muted();
     co2_label_.stringValue = ns(fmt_co2(program_.total_co2_mg) + " CO2eq");
     energy_label_.stringValue = ns(fmt_energy(program_.total_joules));
@@ -1194,12 +1267,16 @@ static CGFloat visible_document_height(NSView* view, CGFloat min_height) {
 
 - (void)showDetailForRow:(NSInteger)row {
     if (row < 0 || row >= (NSInteger)program_.functions.size()) {
+        chart_view_.selectedRow = -1;
+        [chart_view_ setNeedsDisplay:YES];
         detail_view_.program = nullptr;
         detail_view_.selectedRow = -1;
         detail_view_.message = [self textCN:@"选择折线图中的函数查看详情。" en:@"Select a function in the chart to show details."];
         [detail_view_ reloadData];
         return;
     }
+    chart_view_.selectedRow = row;
+    [chart_view_ setNeedsDisplay:YES];
     detail_view_.program = &program_;
     detail_view_.selectedRow = row;
     [detail_view_ reloadData];

@@ -121,7 +121,13 @@ private:
                       std::ostream& out) const {
         out << c(ansi::GRAY) << "  分析配置" << c(ansi::RESET) << "\n";
         out << c(ansi::GRAY) << "  " << c(ansi::RESET)
-            << "源文件  " << c(ansi::WHITE) << prog.source_file << c(ansi::RESET) << "\n";
+            << "源路径  " << c(ansi::WHITE) << prog.source_file << c(ansi::RESET) << "\n";
+        out << c(ansi::GRAY) << "  " << c(ansi::RESET)
+            << "语言    " << c(ansi::WHITE)
+            << (prog.language.empty() ? "Unknown" : prog.language)
+            << c(ansi::RESET) << "\n";
+        out << c(ansi::GRAY) << "  " << c(ansi::RESET)
+            << "文件数  " << c(ansi::WHITE) << prog.analyzed_files << c(ansi::RESET) << "\n";
         out << c(ansi::GRAY) << "  " << c(ansi::RESET)
             << "硬件    " << c(ansi::WHITE) << hw.name
             << c(ansi::GRAY) << "  TDP " << hw.tdp_watts << "W" << c(ansi::RESET) << "\n";

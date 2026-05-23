@@ -30,6 +30,8 @@ struct LoopInfo {
 struct FunctionProfile {
     std::string name;
     std::string file;
+    std::string source_path;
+    std::string language;
     int         line_start = 0;
     int         line_end   = 0;
 
@@ -53,8 +55,11 @@ struct FunctionProfile {
 // 整体程序分析结果
 struct ProgramProfile {
     std::string source_file;
+    std::string language;
     std::string hardware_key;
     std::string grid_key;
+    std::size_t analyzed_files = 0;
+    bool        source_is_directory = false;
 
     std::vector<FunctionProfile> functions;
 

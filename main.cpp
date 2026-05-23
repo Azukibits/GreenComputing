@@ -7,11 +7,12 @@
 #include "function_profile.hpp"
 #include "static_analyzer.hpp"
 #include "energy_estimator.hpp"
+#include "path_utils.hpp"
 #include "report_generator.hpp"
 
 static void print_usage(const char* argv0) {
     std::cerr <<
-        "用法: " << argv0 << " <source.cpp> [选项]\n\n"
+        "用法: " << argv0 << " <source-file-or-dir> [选项]\n\n"
         "选项:\n"
         "  --hw <key>      硬件配置 (默认: laptop_mid)\n"
         "  --grid <key>    电网区域 (默认: global)\n"
@@ -22,15 +23,22 @@ static void print_usage(const char* argv0) {
         "  rpi4, laptop_low, laptop_mid, desktop_mid, desktop_high,\n"
         "  server_1u, server_hpc\n\n"
         "电网区域:\n"
-        "  cn, us, us_ca, us_tx, eu, de, fr, no, uk, jp, au, br, in, global\n";
+        "  cn, us, us_ca, us_tx, eu, de, fr, no, uk, jp, au, br, in, global\n\n"
+        "支持语言:\n"
+        "  C, C++, Java, JavaScript/TypeScript, Go, C#, Rust\n";
 }
 
 static void list_hw() {
     std::cout << "\n可用硬件配置:\n";
-    for (const auto& [key, hw] : HARDWARE_PROFILES)
+    for (const auto& key : HARDWARE_PROFILE_KEYS) {
+        const auto it = HARDWARE_PROFILES.find(key);
+        if (it == HARDWARE_PROFILES.end())
+            continue;
+        const auto& hw = it->second;
         std::cout << "  " << std::left << std::setw(14) << key
                   << "  " << hw.name
                   << "  (TDP " << hw.tdp_watts << " W)\n";
+    }
     std::cout << "\n";
 }
 
@@ -70,25 +78,25 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    std::vector<std::filesystem::path> search_hints = {
+        std::filesystem::current_path()
+    };
+    if (argc > 0)
+        search_hints.push_back(std::filesystem::path(argv[0]).parent_path());
+
     // 未指定文件时自动查找 demo.cpp
     if (source_file.empty()) {
-        if (std::filesystem::exists("demo.cpp"))
-            source_file = "demo.cpp";
-        else if (std::filesystem::exists("../demo.cpp"))
-            source_file = "../demo.cpp";
-        else {
+        source_file = find_demo_path(search_hints);
+        if (source_file.empty()) {
             std::cerr << "错误: 未指定源文件\n";
             print_usage(argv[0]);
             return 1;
         }
     }
 
-    // 从构建目录运行时尝试上级目录
-    if (!std::filesystem::exists(source_file)) {
-        std::string parent_path = "../" + source_file;
-        if (std::filesystem::exists(parent_path))
-            source_file = parent_path;
-    }
+    std::string resolved_path = resolve_existing_path(source_file, search_hints);
+    if (!resolved_path.empty())
+        source_file = resolved_path;
 
     // 解析硬件配置
     auto hw_it = HARDWARE_PROFILES.find(hw_key);
@@ -112,7 +120,7 @@ int main(int argc, char* argv[]) {
     StaticAnalyzer analyzer;
     std::vector<FunctionProfile> functions;
     try {
-        functions = analyzer.analyze(source_file);
+        functions = analyzer.analyze_path(source_file);
     } catch (const std::exception& e) {
         std::cerr << "分析错误: " << e.what() << "\n";
         return 1;
@@ -125,10 +133,18 @@ int main(int argc, char* argv[]) {
 
     // 能耗与碳排放估算
     ProgramProfile prog;
-    prog.source_file  = source_file;
+    prog.source_file = compact_input_path_label(source_file);
+    prog.language = std::filesystem::is_directory(std::filesystem::path(source_file))
+        ? StaticAnalyzer::summarize_languages(functions)
+        : StaticAnalyzer::language_display_name(
+            StaticAnalyzer::detect_language(source_file));
     prog.hardware_key = hw_key;
-    prog.grid_key     = grid_key;
-    prog.functions    = std::move(functions);
+    prog.grid_key = grid_key;
+    prog.analyzed_files = std::filesystem::is_directory(std::filesystem::path(source_file))
+        ? StaticAnalyzer::collect_supported_files(source_file).size()
+        : 1;
+    prog.source_is_directory = std::filesystem::is_directory(std::filesystem::path(source_file));
+    prog.functions = std::move(functions);
 
     EnergyEstimator estimator(hw, grid);
     estimator.estimate_all(prog);

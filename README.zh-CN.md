@@ -1,111 +1,193 @@
 # GreenComputing
 
-[English README](README.md)
+[English](README.md) · **中文**
 
-![GreenComputing 界面截图](img1.png)
+> 无需离开图形界面或终端工作流，就可以从单个源文件或整个项目目录中估算
+> 函数级能耗和碳排放热点。
 
-GreenComputing 是一个用于估算 C++ 函数级能耗和碳排放的静态分析工具。项目包含 macOS、Windows、Linux 图形界面和跨平台命令行工具，可以帮助你快速发现代码中的相对碳排放热点。
+GreenComputing 是一个用 C++ 编写的静态分析工具，提供原生 macOS 图形界面、
+Windows / Linux Qt 图形界面，以及命令行接口。它会扫描源码、识别多语言函数、
+估算指令类别活动量、套用硬件功耗模型，并给出相对碳排放热点，帮助你判断优化优先级。
 
-分析器会读取 C++ 源文件，识别函数、估算指令类别活动量、套用硬件功耗模型，并根据所选电网区域的碳强度给出能耗和碳排放估算。
+请始终使用最新版本。后续会继续加入更多功能。
 
-## 功能
+`GreenComputingCLI` 本身也是一个独立入口，因此你也可以在脚本、CI，或者直接对项目目录执行同样的分析。
 
-- 函数级能耗与碳排放估算
-- macOS、Windows、Linux 图形界面
-- 图形界面支持中文和英文切换
-- Windows、Linux、macOS 命令行版本
-- 碳排放热点排名
-- 函数对比折线图
-- 指令类别贡献拆分
-- 硬件配置和电网区域选择
-- 函数调用关系摘要
-- 自适应窗口布局
+[![release](https://github.com/Azukibits/GreenComputing/actions/workflows/release.yml/badge.svg)](https://github.com/Azukibits/GreenComputing/actions/workflows/release.yml)
 
-## 环境要求
+![GreenComputing screenshot](img1.png)
 
-- CMake 3.20 或更高版本
-- 支持 C++20 的编译器
-- macOS 图形界面需要 Apple Command Line Tools 或 Xcode
-- Windows/Linux 图形界面构建需要 Qt 6
+你可以分析单个文件，也可以分析整个混合语言项目；结果会在同一个窗口中展示热点函数、硬件配置和电网区域对比：
 
-## 构建
+## 功能特性
 
-macOS 会同时构建图形界面和命令行工具：
+- 函数级能耗和碳排放估算
+- 支持分析单个源文件或整个项目目录
+- 原生 macOS 图形界面，以及 Windows / Linux Qt 图形界面
+- 适合本地脚本和 CI 的命令行接口
+- 支持 C、C++、Java、JavaScript、TypeScript、Go、C#、Rust 源码检测
+- 提供函数热点排名、碳排放折线图和指令贡献拆分
+- 提供从边缘设备到工作站、服务器的硬件配置预设
+- 提供多电网区域碳强度预设
+- 桌面界面支持中英文切换
 
-```bash
-cmake -S . -B cmake-build-debug
-cmake --build cmake-build-debug --target GreenComputing GreenComputingCLI
-```
+## 系统要求
 
-Windows 和 Linux 会构建 Qt 图形界面和命令行工具：
+- 以下任一环境：
+  - **macOS**，安装 Apple Command Line Tools 或 Xcode
+  - **Windows**，带 C++20 编译器，并在 GUI 构建时安装 **Qt 6**
+  - **Linux**，带 C++20 编译器，并在 GUI 构建时安装 **Qt 6**
+- **CMake 3.20+**
 
-```bash
-cmake -S . -B build
-cmake --build build --target GreenComputing GreenComputingCLI --config Release
-```
+## 快速安装，推荐方式
 
-## 运行
+1. 从 [Releases 页面](https://github.com/Azukibits/GreenComputing/releases)
+   下载对应平台的发布包：
+   - macOS：`GreenComputing-macos.dmg`
+   - Linux：`GreenComputing-linux.tar.gz`
+   - Windows：`GreenComputing-windows.zip`
+2. 解压或打开发布包。
+3. 启动对应平台的图形界面：
+   - macOS：打开 `GreenComputing.app`
+   - Linux：运行 `run-greencomputing.sh`
+   - Windows：运行 `GreenComputing.exe`
+4. 选择源文件或项目目录，再选择硬件配置和电网区域，最后执行分析。
 
-图形界面：
+## 故障排查
 
-```bash
-open ./cmake-build-debug/GreenComputing.app
-```
+### macOS 下载后阻止应用或 CLI
 
-Windows/Linux 图形界面：
+如果你是从下载的安装包中获取 GreenComputing，macOS Gatekeeper 可能会把
+应用包或 CLI 二进制标记为 quarantine 隔离状态。
 
-```bash
-./build/GreenComputing
-```
-
-命令行：
-
-```bash
-./cmake-build-debug/GreenComputingCLI demo.cpp --no-color
-```
-
-分析其他源文件：
-
-```bash
-./cmake-build-debug/GreenComputingCLI path/to/source.cpp --hw laptop_mid --grid global
-```
-
-## 项目结构
+解压后的目录通常类似这样：
 
 ```text
-CMakeLists.txt          构建配置
-main.cpp                命令行入口
-gui_main.mm             macOS Cocoa 图形界面
-qt_main.cpp             Windows/Linux Qt 图形界面
-static_analyzer.hpp     源码解析与函数分析
-energy_estimator.hpp    能耗和碳排放估算模型
-carbon_model.hpp        硬件与电网区域数据
-function_profile.hpp    分析数据结构
-report_generator.hpp    命令行报告输出
-demo.cpp                示例源文件
-img1.png                项目界面截图
+GreenComputing-macos/
+├── GreenComputing.app
+├── GreenComputingCLI
+├── README.md
+├── README.zh-CN.md
+└── demo.cpp
 ```
 
-## 估算模型
+要移除整个解压目录的 quarantine 属性，可以运行：
 
-GreenComputing 使用轻量级静态模型。它会检测常见源码模式，并将其归类到整数运算、浮点运算、内存和容器操作、分支、I/O、SIMD、同步原语等指令类别。
+```sh
+xattr -dr com.apple.quarantine /path/to/GreenComputing-macos
+```
 
-估算出的指令活动量会根据循环深度放大，再映射到所选硬件配置的功耗模型。碳排放量根据所选电网区域的碳强度计算。
+如果你还保留着原始 `.dmg`，也可以先移除 `.dmg` 的 quarantine 属性：
 
-## 局限性
+```sh
+xattr -d com.apple.quarantine ~/Downloads/GreenComputing-macos.dmg
+```
 
-本项目提供的是近似静态估算，不是硬件实测数据。结果适合用于相对热点定位和优化优先级判断，不适合作为精确运行时能耗数据。
+> 只应移除来自可信来源文件的 quarantine 隔离属性，例如本仓库官方 Releases 页面下载的文件，
+> 或者你自己从源码编译出来的文件。
 
-如果需要精确测量，请使用 RAPL、`perf`、Instruments 或硬件厂商提供的功耗遥测工具。
+### Windows 下载后阻止可执行文件
 
-## 发布包
+如果你是从下载的 `.zip` 安装 GreenComputing，Windows 可能会把其中的 `.exe`
+标记为来自互联网的文件。
 
-GitHub Release 会提供：
+解压后的目录通常类似这样：
 
-- macOS 包：`GreenComputing-macos.dmg`，包含图形界面和命令行工具
-- Linux 包：`GreenComputing-linux.tar.gz`，包含图形界面和命令行工具
-- Windows 包：`GreenComputing-windows.zip`，包含图形界面和命令行工具
+```text
+GreenComputing-windows/
+├── GreenComputing.exe
+├── GreenComputingCLI.exe
+├── README.md
+├── README.zh-CN.md
+└── demo.cpp
+```
+
+只解锁可执行文件：
+
+```powershell
+Unblock-File -Path "C:\path\to\GreenComputing-windows\*.exe"
+```
+
+或者解锁整个解压目录：
+
+```powershell
+Get-ChildItem "C:\path\to\GreenComputing-windows" -Recurse | Unblock-File
+```
+
+> 只应解锁来自可信来源的文件，例如本仓库官方 Releases 页面下载的文件，
+> 或者你自己从源码编译出来的文件。
+
+## 从源码构建
+
+适合想要修改分析器、扩展语言支持，或者构建未发布版本的开发者。
+
+前置要求：
+
+- **C++20** 编译器
+- **CMake 3.20+**
+- **macOS**：Apple Command Line Tools 或 Xcode
+- **Windows / Linux GUI 构建**：**Qt 6 Widgets**
+
+```sh
+git clone https://github.com/Azukibits/GreenComputing.git
+cd GreenComputing
+
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release --target GreenComputing GreenComputingCLI
+```
+
+生成结果：
+
+- macOS GUI：`build/GreenComputing.app`
+- Windows / Linux GUI：`build/GreenComputing` 或 `build/Release/GreenComputing.exe`
+- CLI：`build/GreenComputingCLI` 或 `build/Release/GreenComputingCLI.exe`
+
+## 在 CLI 中使用
+
+分析单个文件：
+
+```sh
+./build/GreenComputingCLI demo.cpp --no-color
+```
+
+分析整个项目目录：
+
+```sh
+./build/GreenComputingCLI /path/to/project --hw laptop_mid --grid global
+```
+
+部分 CLI 选项如下：
+
+| 项目 | 用途 |
+|------|------|
+| `<source-file-or-dir>` | 分析单个源文件，或递归扫描整个项目目录 |
+| `--hw <key>` | 选择硬件配置预设 |
+| `--grid <key>` | 选择电网区域碳强度预设 |
+| `--list-hw` | 打印所有硬件配置 key |
+| `--list-grids` | 打印所有电网区域 key |
+| `--no-color` | 禁用终端报告中的 ANSI 颜色 |
+
+## 状态 / 路线图
+
+当前已完成，`v0.3.0`：
+
+- [x] 原生 macOS GUI，以及 Windows / Linux Qt GUI
+- [x] 命令行接口
+- [x] 支持分析单个源文件和整个项目目录
+- [x] 多语言函数提取：C、C++、Java、JavaScript、TypeScript、Go、C#、Rust
+- [x] 函数热点排名、折线图选择和详细指令拆分
+- [x] 混合语言项目汇总
+- [x] 从 Raspberry Pi 到工作站、服务器的硬件配置预设
+- [x] 多电网区域碳强度预设
+- [x] macOS、Linux、Windows 的 GitHub Actions 打包流程
+
+计划中的功能：
+
+- [ ] 提升更多真实项目语法场景下的解析准确率
+- [ ] 增加更丰富的函数级和文件级汇总视图
+- [ ] 增加可导出的机器可读报告
+- [ ] 增加更多硬件和区域碳强度数据集
 
 ## 许可证
 
-本项目使用仓库中的 `LICENSE` 文件。
+MIT — 见 [LICENSE](LICENSE)。
